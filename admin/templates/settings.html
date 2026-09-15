@@ -14,21 +14,30 @@
     <tr><td>TELEGRAM_API_HASH</td><td>{{ masked.telegram_api_hash }}</td></tr>
     <tr><td>BOT_TOKEN</td><td>{{ masked.bot_token }}</td></tr>
     <tr><td>ANTHROPIC_API_KEY</td><td>{{ masked.anthropic_api_key }}</td></tr>
+    <tr><td>AI_PROVIDER</td><td>{{ settings.ai_provider }}</td></tr>
     <tr><td>CLAUDE_MODEL</td><td>{{ settings.claude_model }}</td></tr>
+    <tr><td>GEMINI_MODEL</td><td>{{ settings.gemini_model }}</td></tr>
     <tr><td>TARGET_LANGUAGE</td><td>{{ settings.target_language }}</td></tr>
     <tr><td>DATABASE_URL</td><td>{{ masked.database_url }}</td></tr>
   </table>
 </div>
 
 <div class="card">
-  <h3>Получатели на утверждение (APPROVER_CHAT_IDS)</h3>
-  {% if settings.approver_chat_ids %}
-  <ul>
-    {% for uid in settings.approver_chat_ids %}<li>{{ uid }}</li>{% endfor %}
-  </ul>
+  <h3>Получатели на утверждение</h3>
+  {% if settings.approval_chat_id %}
+  <p>Карточки идут одной копией в групповой чат <b>{{ settings.approval_chat_id }}</b> (APPROVAL_CHAT_ID).</p>
+    {% if settings.approver_chat_ids %}
+    <p class="muted">Нажимать кнопки могут только эти user id:</p>
+    <ul>{% for uid in settings.approver_chat_ids %}<li>{{ uid }}</li>{% endfor %}</ul>
+    {% else %}
+    <p class="muted">Ограничения нет — нажать кнопку может любой участник этой группы.</p>
+    {% endif %}
+  {% elif settings.approver_chat_ids %}
+  <p class="muted">Карточки шлются лично каждому (APPROVAL_CHAT_ID не задан):</p>
+  <ul>{% for uid in settings.approver_chat_ids %}<li>{{ uid }}</li>{% endfor %}</ul>
   {% else %}
-  <p class="muted">Список пуст — карточки на утверждение сейчас никому не отправляются. Задайте
-    APPROVER_CHAT_IDS в переменных окружения (через запятую, Telegram user id).</p>
+  <p class="muted">Ни APPROVAL_CHAT_ID, ни APPROVER_CHAT_IDS не заданы — карточки на утверждение
+    сейчас никому не отправляются.</p>
   {% endif %}
 </div>
 {% endblock %}

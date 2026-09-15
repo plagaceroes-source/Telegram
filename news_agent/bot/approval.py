@@ -73,7 +73,8 @@ async def _card_caption(draft: DraftPost, raw_post: RawPost, source: Source | No
 
 
 async def send_draft_card(bot: Bot, draft_id: int) -> None:
-    """Отправляет карточку черновика всем утверждающим (approver_chat_ids)."""
+    """Отправляет карточку черновика: одну в групповой чат (APPROVAL_CHAT_ID),
+    либо каждому утверждающему лично (APPROVER_CHAT_IDS), если группа не задана."""
     async with session_scope() as session:
         draft = await session.get(DraftPost, draft_id)
         if draft is None:
@@ -84,7 +85,7 @@ async def send_draft_card(bot: Bot, draft_id: int) -> None:
         media_paths = list(draft.media_paths)
 
     keyboard = await _build_card_keyboard(draft_id)
-    recipients = settings.approver_chat_ids or []
+    recipients = [settings.approval_chat_id] if settings.approval_chat_id else (settings.approver_chat_ids or [])
 
     for chat_id in recipients:
         try:
@@ -131,6 +132,17 @@ async def poll_pending_drafts(bot: Bot, interval: int = 10) -> None:
         await asyncio.sleep(interval)
 
 
+async def _still_pending(callback: CallbackQuery, draft_id: int) -> bool:
+    """Защита от гонки: несколько утверждающих в группе могут нажать кнопку одновременно."""
+    async with session_scope() as session:
+        draft = await session.get(DraftPost, draft_id)
+        status = draft.status if draft else None
+    if status != "pending_approval":
+        await callback.answer("Этот пост уже обработан другим утверждающим.", show_alert=True)
+        return False
+    return True
+
+
 @router.callback_query(F.data.startswith("pub:"))
 async def on_publish(callback: CallbackQuery) -> None:
     if not _approver_filter(callback):
@@ -140,6 +152,9 @@ async def on_publish(callback: CallbackQuery) -> None:
     draft_id, target_id = int(draft_id_str), int(target_id_str)
     if not target_id:
         await callback.answer("Нет ни одного целевого канала. Добавьте канал в сетку.", show_alert=True)
+        return
+
+    if not await _still_pending(callback, draft_id):
         return
 
     await callback.answer("Публикую…")
@@ -161,6 +176,9 @@ async def on_reject(callback: CallbackQuery) -> None:
         await callback.answer("Недостаточно прав", show_alert=True)
         return
     draft_id = int(callback.data.split(":")[1])
+    if not await _still_pending(callback, draft_id):
+        return
+
     await reject_draft(draft_id, decided_by=str(callback.from_user.id))
     await callback.answer("Отклонено")
     if callback.message.caption:
@@ -175,6 +193,8 @@ async def on_edit_request(callback: CallbackQuery) -> None:
         await callback.answer("Недостаточно прав", show_alert=True)
         return
     draft_id = int(callback.data.split(":")[1])
+    if not await _still_pending(callback, draft_id):
+        return
     _awaiting_edit[callback.from_user.id] = draft_id
     await callback.answer()
     await callback.message.reply(f"Пришлите следующим сообщением новый текст для черновика #{draft_id}.")

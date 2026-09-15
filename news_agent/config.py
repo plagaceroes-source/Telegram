@@ -25,6 +25,15 @@ class Settings:
     telegram_api_hash: str = field(default_factory=lambda: os.getenv("TELEGRAM_API_HASH", ""))
 
     bot_token: str = field(default_factory=lambda: os.getenv("BOT_TOKEN", ""))
+
+    # Групповой чат, куда шлётся ОДНА карточка на утверждение (её видят и могут
+    # нажать все участники). Если не задан — карточки шлются каждому лично
+    # в APPROVER_CHAT_IDS (старое поведение).
+    approval_chat_id: int | None = field(default_factory=lambda: _int("APPROVAL_CHAT_ID", 0) or None)
+
+    # Если задан вместе с APPROVAL_CHAT_ID — ограничивает, кто из участников
+    # группы может нажимать кнопки (иначе может любой участник группы).
+    # Если APPROVAL_CHAT_ID не задан — это список личных чатов для рассылки карточек.
     approver_chat_ids: list[int] = field(default_factory=lambda: _list_int("APPROVER_CHAT_IDS"))
 
     # Какой LLM использовать для перевода/рерайта: "claude" или "gemini".

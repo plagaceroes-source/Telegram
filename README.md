@@ -38,7 +38,13 @@ cp .env.example .env  # и заполнить значения
    публикации и правом приглашать пользователей (для инвайт-ссылок и chat_member
    апдейтов).
 4. Собрать первичный список каналов-источников.
-5. Получить ключ Anthropic API → `ANTHROPIC_API_KEY`.
+5. Получить ключ для перевода/рерайта — задаётся через `AI_PROVIDER` в `.env`:
+   - `AI_PROVIDER=claude` + `ANTHROPIC_API_KEY` с https://console.anthropic.com
+     (pay-as-you-go, без гарантированного бесплатного тарифа);
+   - `AI_PROVIDER=gemini` + `GEMINI_API_KEY` с https://aistudio.google.com/apikey
+     (есть бесплатный тариф — удобно для теста).
+   Переключение между ними — только правка `.env`, код менять не нужно
+   (см. `news_agent/services/ai_provider.py`).
 6. Узнать свой Telegram user id (например через `@userinfobot`) → `APPROVER_CHAT_IDS`
    (через запятую, если утверждающих несколько).
 

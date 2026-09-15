@@ -9,7 +9,7 @@ from sqlalchemy import select
 from news_agent.config import settings
 from news_agent.db.models import DraftPost, RawPost, Source
 from news_agent.db.session import session_scope
-from news_agent.services.claude import rewrite_only, translate_and_rewrite
+from news_agent.services.ai_provider import rewrite_only, translate_and_rewrite
 
 logger = logging.getLogger(__name__)
 

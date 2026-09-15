@@ -27,8 +27,15 @@ class Settings:
     bot_token: str = field(default_factory=lambda: os.getenv("BOT_TOKEN", ""))
     approver_chat_ids: list[int] = field(default_factory=lambda: _list_int("APPROVER_CHAT_IDS"))
 
+    # Какой LLM использовать для перевода/рерайта: "claude" или "gemini".
+    ai_provider: str = field(default_factory=lambda: os.getenv("AI_PROVIDER", "claude"))
+
     anthropic_api_key: str = field(default_factory=lambda: os.getenv("ANTHROPIC_API_KEY", ""))
     claude_model: str = field(default_factory=lambda: os.getenv("CLAUDE_MODEL", "claude-sonnet-5"))
+
+    gemini_api_key: str = field(default_factory=lambda: os.getenv("GEMINI_API_KEY", ""))
+    gemini_model: str = field(default_factory=lambda: os.getenv("GEMINI_MODEL", "gemini-2.5-flash"))
+
     target_language: str = field(default_factory=lambda: os.getenv("TARGET_LANGUAGE", "ru"))
 
     database_url: str = field(

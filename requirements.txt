@@ -1,0 +1,13 @@
+telethon>=1.36
+aiogram>=3.10
+anthropic>=0.34
+SQLAlchemy>=2.0
+aiosqlite>=0.20
+asyncpg>=0.29
+python-dotenv>=1.0
+fastapi>=0.112
+uvicorn[standard]>=0.30
+jinja2>=3.1
+python-multipart>=0.0.9
+langdetect>=1.0.9
+APScheduler>=3.10

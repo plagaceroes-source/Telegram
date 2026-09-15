@@ -1,0 +1,12 @@
+.venv/
+__pycache__/
+*.pyc
+.env
+storage/sessions/*.session
+storage/sessions/*.session-journal
+storage/incoming/*
+!storage/incoming/.gitkeep
+!storage/sessions/.gitkeep
+*.db
+*.sqlite3
+.DS_Store

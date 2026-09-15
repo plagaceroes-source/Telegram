@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% block title %}Источники — News Agent{% endblock %}
+{% block content %}
+<h1>Источники</h1>
+
+<div class="card">
+  <h3>Добавить источник</h3>
+  <form method="post" action="/sources">
+    <label>Username (без @) <input name="username" required></label>
+    <label>Язык
+      <select name="lang">
+        <option value="auto">auto</option>
+        <option value="es">es</option>
+        <option value="ru">ru</option>
+        <option value="uk">uk</option>
+        <option value="en">en</option>
+      </select>
+    </label>
+    <label>Режим
+      <select name="mode">
+        <option value="rewrite">rewrite</option>
+        <option value="as_is">as_is</option>
+      </select>
+    </label>
+    <label>Аккаунт
+      <select name="userbot_account_id">
+        {% for a in accounts %}
+        <option value="{{ a.id }}">#{{ a.id }} {{ a.label }} ({{ a.sources_count }}/{{ max_sources }})</option>
+        {% endfor %}
+      </select>
+    </label>
+    <button type="submit">Добавить</button>
+  </form>
+</div>
+
+<table>
+  <tr>
+    <th>ID</th><th>Username</th><th>Язык</th><th>Режим</th><th>Аккаунт</th>
+    <th>Вступил</th><th>Статус</th><th>Добавлен</th><th></th>
+  </tr>
+  {% for s in sources %}
+  <tr>
+    <td>{{ s.id }}</td>
+    <td>@{{ s.username }}</td>
+    <td>{{ s.lang }}</td>
+    <td>{{ s.mode }}</td>
+    <td>
+      {% if s.userbot_account %}
+        {% if s.userbot_account.status == 'limited' %}
+          <span class="badge limited">#{{ s.userbot_account.id }} {{ s.userbot_account.label }} — ограничен</span>
+        {% else %}
+          #{{ s.userbot_account.id }} {{ s.userbot_account.label }}
+        {% endif %}
+      {% else %}—{% endif %}
+    </td>
+    <td>{{ 'да' if s.joined else 'нет' }}</td>
+    <td><span class="badge {{ 'active' if s.active else 'paused' }}">{{ 'активен' if s.active else 'на паузе' }}</span></td>
+    <td class="muted">{{ s.added_at.strftime('%Y-%m-%d') }}</td>
+    <td>
+      <form class="inline" method="post" action="/sources/{{ s.id }}/toggle">
+        <button type="submit" class="secondary">{{ 'Пауза' if s.active else 'Возобновить' }}</button>
+      </form>
+      <form class="inline" method="post" action="/sources/{{ s.id }}/delete" onsubmit="return confirm('Удалить источник?')">
+        <button type="submit" class="danger">Удалить</button>
+      </form>
+    </td>
+  </tr>
+  {% endfor %}
+</table>
+{% endblock %}

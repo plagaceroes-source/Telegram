@@ -1,0 +1,102 @@
+"""Логика публикации одобренного черновика в целевой канал (ТЗ 2.4)."""
+from __future__ import annotations
+
+import logging
+import shutil
+from pathlib import Path
+
+from aiogram import Bot
+from aiogram.types import FSInputFile, InputMediaPhoto, InputMediaVideo
+
+from news_agent.db.models import DraftPost, PublishedPost, TargetChannel, utcnow
+from news_agent.db.session import session_scope
+
+logger = logging.getLogger(__name__)
+
+_VIDEO_EXTS = {".mp4", ".mov", ".mkv", ".webm"}
+
+
+def _cleanup_media(media_paths: list[str]) -> None:
+    """Удаляет временные медиафайлы после публикации/отклонения (раздел 5: медиа временное)."""
+    dirs_to_remove = set()
+    for path in media_paths:
+        p = Path(path)
+        dirs_to_remove.add(p.parent)
+        try:
+            p.unlink(missing_ok=True)
+        except OSError:
+            logger.warning("Не удалось удалить файл медиа %s", path)
+    for d in dirs_to_remove:
+        try:
+            if d.exists() and not any(d.iterdir()):
+                shutil.rmtree(d, ignore_errors=True)
+        except OSError:
+            pass
+
+
+async def publish_draft(bot: Bot, draft_id: int, target_channel_id: int, decided_by: str) -> None:
+    async with session_scope() as session:
+        draft = await session.get(DraftPost, draft_id)
+        if draft is None:
+            raise ValueError(f"draft_post {draft_id} не найден")
+        target = await session.get(TargetChannel, target_channel_id)
+        if target is None:
+            raise ValueError(f"target_channel {target_channel_id} не найден")
+
+        text = draft.translated_text
+        media_paths = list(draft.media_paths)
+        chat_id = target.tg_chat_id or f"@{target.username}"
+
+    tg_message_id: int
+    if not media_paths:
+        message = await bot.send_message(chat_id=chat_id, text=text)
+        tg_message_id = message.message_id
+    elif len(media_paths) == 1:
+        path = media_paths[0]
+        file = FSInputFile(path)
+        if Path(path).suffix.lower() in _VIDEO_EXTS:
+            message = await bot.send_video(chat_id=chat_id, video=file, caption=text)
+        else:
+            message = await bot.send_photo(chat_id=chat_id, photo=file, caption=text)
+        tg_message_id = message.message_id
+    else:
+        media_group = []
+        for i, path in enumerate(media_paths):
+            file = FSInputFile(path)
+            caption = text if i == 0 else None
+            if Path(path).suffix.lower() in _VIDEO_EXTS:
+                media_group.append(InputMediaVideo(media=file, caption=caption))
+            else:
+                media_group.append(InputMediaPhoto(media=file, caption=caption))
+        messages = await bot.send_media_group(chat_id=chat_id, media=media_group)
+        tg_message_id = messages[0].message_id
+
+    async with session_scope() as session:
+        draft = await session.get(DraftPost, draft_id)
+        draft.status = "published"
+        draft.decided_by = decided_by
+        draft.decided_at = utcnow()
+        session.add(
+            PublishedPost(
+                draft_post_id=draft_id,
+                target_channel_id=target_channel_id,
+                tg_message_id=tg_message_id,
+            )
+        )
+
+    _cleanup_media(media_paths)
+    logger.info("Черновик %s опубликован в канал %s (message_id=%s)", draft_id, target.username, tg_message_id)
+
+
+async def reject_draft(draft_id: int, decided_by: str) -> None:
+    async with session_scope() as session:
+        draft = await session.get(DraftPost, draft_id)
+        if draft is None:
+            return
+        draft.status = "rejected"
+        draft.decided_by = decided_by
+        draft.decided_at = utcnow()
+        media_paths = list(draft.media_paths)
+
+    _cleanup_media(media_paths)
+    logger.info("Черновик %s отклонён пользователем %s", draft_id, decided_by)

@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block title %}Настройки — News Agent{% endblock %}
+{% block content %}
+<h1>Настройки</h1>
+<p class="muted">
+  Секреты задаются через переменные окружения на Render (Environment Variables / Secret Files),
+  а не через эту страницу — здесь только просмотр текущего состояния (замаскировано).
+</p>
+
+<div class="card">
+  <table>
+    <tr><th>Параметр</th><th>Значение</th></tr>
+    <tr><td>TELEGRAM_API_ID</td><td>{{ masked.telegram_api_id }}</td></tr>
+    <tr><td>TELEGRAM_API_HASH</td><td>{{ masked.telegram_api_hash }}</td></tr>
+    <tr><td>BOT_TOKEN</td><td>{{ masked.bot_token }}</td></tr>
+    <tr><td>ANTHROPIC_API_KEY</td><td>{{ masked.anthropic_api_key }}</td></tr>
+    <tr><td>CLAUDE_MODEL</td><td>{{ settings.claude_model }}</td></tr>
+    <tr><td>TARGET_LANGUAGE</td><td>{{ settings.target_language }}</td></tr>
+    <tr><td>DATABASE_URL</td><td>{{ masked.database_url }}</td></tr>
+  </table>
+</div>
+
+<div class="card">
+  <h3>Получатели на утверждение (APPROVER_CHAT_IDS)</h3>
+  {% if settings.approver_chat_ids %}
+  <ul>
+    {% for uid in settings.approver_chat_ids %}<li>{{ uid }}</li>{% endfor %}
+  </ul>
+  {% else %}
+  <p class="muted">Список пуст — карточки на утверждение сейчас никому не отправляются. Задайте
+    APPROVER_CHAT_IDS в переменных окружения (через запятую, Telegram user id).</p>
+  {% endif %}
+</div>
+{% endblock %}

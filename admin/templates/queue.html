@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block title %}Очередь на утверждение — News Agent{% endblock %}
+{% block content %}
+<h1>Очередь на утверждение</h1>
+<p class="muted">Это история; сами решения принимаются в Telegram (карточки от бота).</p>
+<table>
+  <tr><th>ID</th><th>Источник</th><th>Текст</th><th>Статус</th><th>Канал</th><th>Кем/когда</th><th>Создан</th></tr>
+  {% for d in drafts %}
+  <tr>
+    <td>{{ d.id }}</td>
+    <td>{{ d.source_label }}</td>
+    <td style="max-width:320px">{{ d.translated_text[:160] }}{{ '…' if d.translated_text|length > 160 }}</td>
+    <td><span class="badge {{ d.status }}">{{ d.status }}</span></td>
+    <td>{{ d.target_channel.username if d.target_channel else '—' }}</td>
+    <td class="muted">{{ d.decided_by or '—' }}{% if d.decided_at %} / {{ d.decided_at.strftime('%Y-%m-%d %H:%M') }}{% endif %}</td>
+    <td class="muted">{{ d.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+  </tr>
+  {% endfor %}
+</table>
+{% endblock %}

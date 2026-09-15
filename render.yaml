@@ -1,3 +1,29 @@
+envVarGroups:
+  - name: news-agent-secrets
+    envVars:
+      - key: TELEGRAM_API_ID
+        sync: false
+      - key: TELEGRAM_API_HASH
+        sync: false
+      - key: BOT_TOKEN
+        sync: false
+      - key: AI_PROVIDER
+        value: gemini
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: CLAUDE_MODEL
+        value: claude-sonnet-5
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GEMINI_MODEL
+        value: gemini-3.6-flash
+      - key: TARGET_LANGUAGE
+        value: ru
+      - key: APPROVAL_CHAT_ID
+        sync: false
+      - key: APPROVER_CHAT_IDS
+        sync: false
+
 databases:
   - name: news-agent-db
     plan: starter
@@ -17,14 +43,7 @@ services:
         fromDatabase:
           name: news-agent-db
           property: connectionString
-      - key: ANTHROPIC_API_KEY
-        sync: false
-      - key: BOT_TOKEN
-        sync: false
-      - key: APPROVER_CHAT_IDS
-        sync: false
-      - key: ADMIN_SECRET_KEY
-        generateValue: true
+      - fromGroup: news-agent-secrets
 
   # Approval + publisher бот (long polling; вебхук можно включить позже)
   - type: worker
@@ -38,18 +57,13 @@ services:
         fromDatabase:
           name: news-agent-db
           property: connectionString
-      - key: ANTHROPIC_API_KEY
-        sync: false
-      - key: BOT_TOKEN
-        sync: false
-      - key: APPROVER_CHAT_IDS
-        sync: false
+      - fromGroup: news-agent-secrets
     disk:
       name: news-agent-media
       mountPath: /opt/render/project/src/storage
       sizeGB: 5
 
-  # Processing core (перевод/рерайт через Claude)
+  # Processing core (перевод/рерайт через Claude/Gemini — см. AI_PROVIDER)
   - type: worker
     name: news-agent-processing
     plan: starter
@@ -61,12 +75,11 @@ services:
         fromDatabase:
           name: news-agent-db
           property: connectionString
-      - key: ANTHROPIC_API_KEY
-        sync: false
+      - fromGroup: news-agent-secrets
 
   # Userbot — один Background Worker НА КАЖДЫЙ Telethon-аккаунт (ТЗ 2.1, раздел 8).
   # Продублируйте этот сервис (news-agent-userbot-2, -3, ...) при добавлении новых аккаунтов,
-  # каждый со своим USERBOT_ACCOUNT_ID и общим диском news-agent-sessions.
+  # каждый со своим USERBOT_ACCOUNT_ID.
   - type: worker
     name: news-agent-userbot-1
     plan: starter
@@ -78,12 +91,9 @@ services:
         fromDatabase:
           name: news-agent-db
           property: connectionString
-      - key: TELEGRAM_API_ID
-        sync: false
-      - key: TELEGRAM_API_HASH
-        sync: false
       - key: USERBOT_ACCOUNT_ID
         value: "1"
+      - fromGroup: news-agent-secrets
     disk:
       name: news-agent-sessions
       mountPath: /opt/render/project/src/storage
@@ -102,5 +112,4 @@ services:
         fromDatabase:
           name: news-agent-db
           property: connectionString
-      - key: BOT_TOKEN
-        sync: false
+      - fromGroup: news-agent-secrets

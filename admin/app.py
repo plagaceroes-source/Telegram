@@ -262,6 +262,7 @@ async def settings_page(request: Request):
         "telegram_api_hash": _mask(settings.telegram_api_hash),
         "bot_token": _mask(settings.bot_token),
         "anthropic_api_key": _mask(settings.anthropic_api_key),
+        "gemini_api_key": _mask(settings.gemini_api_key),
         "database_url": _mask(settings.database_url, keep=12),
     }
     return templates.TemplateResponse(

@@ -104,6 +104,38 @@ python scripts/run_stats_snapshot.py
 `storage/sessions/` на диск нового сервиса (или перезапустите скрипт авторизации
 с тем же `--phone` прямо на сервере — код придёт в тот же Telegram-аккаунт).
 
+## Деплой на Railway (альтернатива Render)
+
+У Railway нет единого файла-блюпринта на весь стек, как `render.yaml` у Render —
+каждый сервис создаётся в дашборде отдельно, но использует один и тот же
+GitHub-репозиторий и общий `railway.json` (настройки сборки через Nixpacks).
+
+1. **New Project → Deploy from GitHub repo** → выбрать этот репозиторий.
+2. **+ New → Database → PostgreSQL** — Railway создаст БД и переменную
+   `DATABASE_URL` (код сам приводит её к `postgresql+asyncpg://`, руками менять
+   не нужно).
+3. Создать **Shared Variables** проекта (Project Settings → Variables) —
+   аналог envVarGroup в Render, доступны всем сервисам через `${{shared.ИМЯ}}`:
+   `TELEGRAM_API_ID`, `TELEGRAM_API_HASH`, `BOT_TOKEN`, `AI_PROVIDER`,
+   `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, `GEMINI_MODEL`, `TARGET_LANGUAGE`,
+   `APPROVAL_CHAT_ID`, `APPROVER_CHAT_IDS`.
+4. На каждый компонент — **+ New → GitHub Repo** (тот же репозиторий, ещё один
+   сервис), в Settings → Deploy указать **Custom Start Command**:
+
+   | Сервис | Start Command | Доп. настройки |
+   |---|---|---|
+   | admin | `python scripts/run_admin.py` | Settings → Networking → Generate Domain (публичный URL); слушает `$PORT`, который Railway передаёт автоматически |
+   | bot | `python scripts/run_bot.py` | подключить Volume, mount path `/app/storage` |
+   | processing | `python scripts/run_processing.py` | — |
+   | userbot-1 | `python scripts/run_userbot.py` | `USERBOT_ACCOUNT_ID=1`; тот же (или отдельный) Volume на `/app/storage` |
+   | stats-snapshot | `python scripts/run_stats_snapshot.py` | Settings → Cron Schedule: `0 * * * *` |
+
+   Каждый сервис — ссылку на все Shared Variables + свою `DATABASE_URL` (реф на
+   сервис Postgres) добавить в Variables.
+5. Volumes в Railway обязательно нужны для юзербота (сессия Telethon) и бота
+   (временные медиа) — без них файловая система сбрасывается при редеплое,
+   как и на Render.
+
 ## Структура проекта
 
 ```

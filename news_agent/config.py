@@ -19,6 +19,16 @@ def _list_int(name: str) -> list[int]:
     return [int(x) for x in raw.split(",") if x.strip()]
 
 
+def _normalize_database_url(url: str) -> str:
+    """Render/Railway обычно выдают DATABASE_URL как postgres(ql):// без указания
+    асинхронного драйвера — SQLAlchemy async требует явный +asyncpg."""
+    if url.startswith("postgres://"):
+        return "postgresql+asyncpg://" + url[len("postgres://") :]
+    if url.startswith("postgresql://"):
+        return "postgresql+asyncpg://" + url[len("postgresql://") :]
+    return url
+
+
 @dataclass(frozen=True)
 class Settings:
     telegram_api_id: int = field(default_factory=lambda: _int("TELEGRAM_API_ID", 0))
@@ -48,14 +58,18 @@ class Settings:
     target_language: str = field(default_factory=lambda: os.getenv("TARGET_LANGUAGE", "ru"))
 
     database_url: str = field(
-        default_factory=lambda: os.getenv("DATABASE_URL", "sqlite+aiosqlite:///./storage/news_agent.db")
+        default_factory=lambda: _normalize_database_url(
+            os.getenv("DATABASE_URL", "sqlite+aiosqlite:///./storage/news_agent.db")
+        )
     )
 
     media_storage_path: str = field(default_factory=lambda: os.getenv("MEDIA_STORAGE_PATH", "./storage/incoming"))
     sessions_path: str = field(default_factory=lambda: os.getenv("SESSIONS_PATH", "./storage/sessions"))
 
     admin_secret_key: str = field(default_factory=lambda: os.getenv("ADMIN_SECRET_KEY", "change-me"))
-    admin_port: int = field(default_factory=lambda: _int("ADMIN_PORT", 8000))
+    # Render/Railway/Heroku и т.п. сами назначают порт через PORT — веб-сервис обязан
+    # слушать именно его. ADMIN_PORT остаётся как дефолт для локального запуска.
+    admin_port: int = field(default_factory=lambda: _int("PORT", _int("ADMIN_PORT", 8000)))
 
     sources_poll_interval: int = field(default_factory=lambda: _int("SOURCES_POLL_INTERVAL", 120))
     processing_poll_interval: int = field(default_factory=lambda: _int("PROCESSING_POLL_INTERVAL", 15))

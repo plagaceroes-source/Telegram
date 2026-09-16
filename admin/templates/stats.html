@@ -2,59 +2,68 @@
 {% block title %}Статистика — News Agent{% endblock %}
 {% block content %}
 <h1>Статистика сети каналов</h1>
-<p class="muted">
-  Важно: 100% точной атрибуции «кто откуда пришёл» Telegram не даёт — именные ссылки
-  дают лучшее приближение, но не гарантию. Это ограничение платформы, а не баг.
+<p class="muted" style="margin-top:-10px">
+  Telegram не даёт 100%-точной атрибуции подписчиков — именные ссылки дают приближение, не гарантию.
 </p>
 
-<div class="grid">
-  {% for ch in channels %}
-  <div class="card">
-    <h3>@{{ ch.username }} <span class="muted">({{ ch.network_tag }})</span></h3>
-    <p>Текущее число подписчиков: <b>{{ ch.latest_count if ch.latest_count is not none else '—' }}</b></p>
-    <canvas id="chart-{{ ch.id }}" height="120"></canvas>
-  </div>
-  {% endfor %}
+{% if channels %}
+{% for ch in channels %}
+<div class="card">
+  <h3 style="margin-bottom:4px">@{{ ch.username }} <span class="muted">{{ ch.network_tag }}</span></h3>
+  <div class="value" style="font-size:22px; margin-bottom:8px;">{{ ch.latest_count if ch.latest_count is not none else '—' }}</div>
+  <canvas id="chart-{{ ch.id }}" height="90"></canvas>
 </div>
+{% endfor %}
+{% else %}
+<div class="empty-state">Целевых каналов пока нет.</div>
+{% endif %}
 
 <div class="card">
-  <h3>Именные инвайт-ссылки — приток/удержание</h3>
-  <table>
-    <tr><th>Ссылка</th><th>Канал</th><th>Описание</th><th>Join</th><th>Leave</th><th>Сейчас подписаны</th><th>Статус</th></tr>
-    {% for row in invite_stats %}
-    <tr>
-      <td>{{ row.name }}</td>
-      <td>@{{ row.channel_username }}</td>
-      <td>{{ row.source_label }}</td>
-      <td>{{ row.joins }}</td>
-      <td>{{ row.leaves }}</td>
-      <td>{{ row.joins - row.leaves }}</td>
-      <td>{{ 'отозвана' if row.revoked else 'активна' }}</td>
-    </tr>
-    {% endfor %}
-    <tr>
-      <td colspan="3"><i>Прямые вступления (без ссылки)</i></td>
-      <td>{{ direct_joins }}</td>
-      <td>{{ direct_leaves }}</td>
-      <td>{{ direct_joins - direct_leaves }}</td>
-      <td>—</td>
-    </tr>
-  </table>
+  <h3>Инвайт-ссылки — приток/удержание</h3>
+  {% if invite_stats or direct_joins %}
+  <div class="table-wrap">
+    <table>
+      <tr><th>Ссылка</th><th>Канал</th><th>Join</th><th>Leave</th><th>Сейчас</th></tr>
+      {% for row in invite_stats %}
+      <tr>
+        <td>{{ row.name }}{% if row.revoked %} <span class="faint">(отозвана)</span>{% endif %}</td>
+        <td class="muted">@{{ row.channel_username }}</td>
+        <td>{{ row.joins }}</td>
+        <td>{{ row.leaves }}</td>
+        <td>{{ row.joins - row.leaves }}</td>
+      </tr>
+      {% endfor %}
+      <tr>
+        <td colspan="2"><span class="muted">Прямые (без ссылки)</span></td>
+        <td>{{ direct_joins }}</td>
+        <td>{{ direct_leaves }}</td>
+        <td>{{ direct_joins - direct_leaves }}</td>
+      </tr>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty-state">Инвайт-ссылок пока нет.</div>
+  {% endif %}
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
 <script>
   const seriesData = {{ chart_series|tojson }};
+  Chart.defaults.color = '#9a9a9a';
+  Chart.defaults.borderColor = 'rgba(255,255,255,0.12)';
   for (const [channelId, points] of Object.entries(seriesData)) {
     const ctx = document.getElementById('chart-' + channelId);
-    if (!ctx) continue;
+    if (!ctx || !points.length) continue;
     new Chart(ctx, {
       type: 'line',
       data: {
         labels: points.map(p => p.date),
-        datasets: [{ label: 'Подписчики', data: points.map(p => p.count), borderColor: '#2f6fed', tension: 0.2 }],
+        datasets: [{ label: 'Подписчики', data: points.map(p => p.count), borderColor: '#ffffff', backgroundColor: 'rgba(255,255,255,0.08)', tension: 0.25, fill: true, pointRadius: 0 }],
       },
-      options: { plugins: { legend: { display: false } }, scales: { y: { beginAtZero: false } } },
+      options: {
+        plugins: { legend: { display: false } },
+        scales: { y: { beginAtZero: false, grid: { color: 'rgba(255,255,255,0.08)' } }, x: { grid: { display: false } } },
+      },
     });
   }
 </script>

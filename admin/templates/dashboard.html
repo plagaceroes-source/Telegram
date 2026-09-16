@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block title %}News Agent — дашборд{% endblock %}
+{% block content %}
+<h1>Дашборд</h1>
+
+<div class="stat-grid">
+  <div class="stat-card">
+    <div class="label">Юзерботы онлайн</div>
+    <div class="value">{{ accounts_online }}<span class="unit">/ {{ accounts_total }}</span></div>
+  </div>
+  <div class="stat-card">
+    <div class="label">Источники активны</div>
+    <div class="value">{{ sources_active }}<span class="unit">/ {{ sources_total }}</span></div>
+  </div>
+  <div class="stat-card">
+    <div class="label">На утверждении</div>
+    <div class="value">{{ pending_count }}</div>
+  </div>
+  <div class="stat-card">
+    <div class="label">Опубликовано сегодня</div>
+    <div class="value">{{ published_today }}</div>
+  </div>
+  <div class="stat-card wide">
+    <div>
+      <div class="label">Подписчиков всего по сети</div>
+      <div class="value">{{ "{:,}".format(subscribers_total).replace(",", " ") }}</div>
+    </div>
+    <div class="sub">{{ targets_count }} {{ "канал" if targets_count == 1 else "каналов" }}</div>
+  </div>
+</div>
+
+<div class="card">
+  <h3>Аккаунты-слушатели</h3>
+  {% if accounts %}
+  <div class="table-wrap">
+    <table>
+      <tr><th>Метка</th><th>Телефон</th><th>Статус</th><th>Источников</th></tr>
+      {% for a in accounts %}
+      <tr>
+        <td>{{ a.label }}</td>
+        <td class="muted">{{ a.phone_masked }}</td>
+        <td>
+          {% if a.status == 'active' %}<span class="badge on">online</span>
+          {% elif a.status == 'limited' %}<span class="badge warn">limited</span>
+          {% else %}<span class="badge off">{{ a.status }}</span>{% endif %}
+        </td>
+        <td class="muted">{{ a.sources_count }} / {{ max_sources }}</td>
+      </tr>
+      {% endfor %}
+    </table>
+  </div>
+  {% else %}
+  <p class="muted">Аккаунтов пока нет — добавьте через <code>scripts/add_userbot_account.py</code>.</p>
+  {% endif %}
+</div>
+{% endblock %}

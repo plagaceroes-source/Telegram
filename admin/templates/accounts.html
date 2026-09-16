@@ -2,25 +2,29 @@
 {% block title %}Аккаунты-слушатели — News Agent{% endblock %}
 {% block content %}
 <h1>Аккаунты-слушатели</h1>
-<p class="muted">
-  Новый аккаунт добавляется отдельной командой (нужен интерактивный ввод кода авторизации):<br>
-  <code>python scripts/add_userbot_account.py --phone +999... --label "Аккаунт N"</code>
-</p>
 
-<table>
-  <tr><th>ID</th><th>Метка</th><th>Телефон</th><th>Статус</th><th>Источников</th></tr>
-  {% for a in accounts %}
-  <tr>
-    <td>{{ a.id }}</td>
-    <td>{{ a.label }}</td>
-    <td>{{ a.phone_masked }}</td>
-    <td>
-      {% if a.status == 'limited' %}<span class="badge limited">ограничен</span>
-      {% elif a.status == 'disabled' %}<span class="badge paused">отключён</span>
-      {% else %}<span class="badge active">активен</span>{% endif %}
-    </td>
-    <td>{{ a.sources_count }} / {{ max_sources }}</td>
-  </tr>
-  {% endfor %}
-</table>
+<div class="card">
+  <p class="muted" style="margin:0">
+    Новый аккаунт добавляется отдельной командой (нужен интерактивный ввод кода авторизации):
+  </p>
+  <p style="margin:10px 0 0; font-family: ui-monospace, monospace; font-size: 12.5px; color: var(--text); word-break: break-all;">
+    python scripts/add_userbot_account.py --phone +999... --label "Аккаунт N"
+  </p>
+</div>
+
+{% if accounts %}
+{% for a in accounts %}
+<div class="list-item">
+  <div class="row">
+    <span class="title">{{ a.label }}</span>
+    {% if a.status == 'active' %}<span class="badge on">online</span>
+    {% elif a.status == 'limited' %}<span class="badge warn">limited</span>
+    {% else %}<span class="badge off">{{ a.status }}</span>{% endif %}
+  </div>
+  <div class="meta">{{ a.phone_masked }} · источников: {{ a.sources_count }} / {{ max_sources }}</div>
+</div>
+{% endfor %}
+{% else %}
+<div class="empty-state">Аккаунтов пока нет.</div>
+{% endif %}
 {% endblock %}

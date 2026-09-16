@@ -1,6 +1,7 @@
 """Веб-админка (ТЗ 2.5): FastAPI + Jinja2, простой CRUD источников/каналов + статистика."""
 from __future__ import annotations
 
+import datetime as dt
 from pathlib import Path
 
 from fastapi import FastAPI, Form, Request
@@ -15,6 +16,7 @@ from news_agent.db.models import (
     ChannelStatsDaily,
     DraftPost,
     InviteLink,
+    PublishedPost,
     RawPost,
     Source,
     SubscriberEvent,
@@ -43,8 +45,56 @@ def _mask(value: str, keep: int = 4) -> str:
 
 
 @app.get("/")
-async def root() -> RedirectResponse:
-    return RedirectResponse("/sources")
+async def dashboard(request: Request):
+    async with session_scope() as session:
+        accounts_result = await session.execute(
+            select(UserbotAccount).options(selectinload(UserbotAccount.sources)).order_by(UserbotAccount.id)
+        )
+        accounts = list(accounts_result.scalars())
+        accounts_online = sum(1 for a in accounts if a.status == "active")
+
+        sources_total = await session.scalar(select(func.count()).select_from(Source))
+        sources_active = await session.scalar(select(func.count()).where(Source.active.is_(True)))
+
+        pending_count = await session.scalar(
+            select(func.count()).where(DraftPost.status == "pending_approval")
+        )
+
+        today_start = dt.datetime.now(dt.timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+        published_today = await session.scalar(
+            select(func.count()).where(PublishedPost.published_at >= today_start)
+        )
+
+        targets_result = await session.execute(select(TargetChannel).where(TargetChannel.active.is_(True)))
+        targets = list(targets_result.scalars())
+        subscribers_total = 0
+        for t in targets:
+            latest = await session.scalar(
+                select(ChannelStatsDaily.subscriber_count)
+                .where(ChannelStatsDaily.target_channel_id == t.id)
+                .order_by(ChannelStatsDaily.snapshot_at.desc())
+                .limit(1)
+            )
+            if latest:
+                subscribers_total += latest
+
+    return templates.TemplateResponse(
+        request,
+        "dashboard.html",
+        {
+            "active": "dashboard",
+            "accounts": accounts,
+            "accounts_online": accounts_online,
+            "accounts_total": len(accounts),
+            "sources_active": sources_active or 0,
+            "sources_total": sources_total or 0,
+            "pending_count": pending_count or 0,
+            "published_today": published_today or 0,
+            "subscribers_total": subscribers_total,
+            "targets_count": len(targets),
+            "max_sources": settings.max_sources_per_account,
+        },
+    )
 
 
 # --- Источники ------------------------------------------------------------

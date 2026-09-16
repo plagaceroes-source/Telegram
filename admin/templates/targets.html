@@ -6,29 +6,33 @@
 <div class="card">
   <h3>Добавить целевой канал</h3>
   <form method="post" action="/targets">
-    <label>Username (без @) <input name="username" required></label>
-    <label>Метка сети <input name="network_tag" placeholder="news-es"></label>
-    <label>Язык <input name="lang" value="ru" style="width:60px"></label>
-    <button type="submit">Добавить</button>
+    <label>Username (без @)</label>
+    <input name="username" required>
+    <label>Метка сети</label>
+    <input name="network_tag" placeholder="news-es">
+    <label>Язык</label>
+    <input name="lang" value="ru">
+    <div class="form-actions"><button type="submit">Добавить канал</button></div>
   </form>
-  <p class="muted">После добавления не забудьте вручную назначить publisher-бота администратором этого канала с правом публикации.</p>
+  <p class="muted" style="margin-top:12px">После добавления назначьте бота администратором этого канала с правом публикации.</p>
 </div>
 
-<table>
-  <tr><th>ID</th><th>Username</th><th>Сеть</th><th>Язык</th><th>Статус</th><th></th></tr>
-  {% for t in targets %}
-  <tr>
-    <td>{{ t.id }}</td>
-    <td>@{{ t.username }}</td>
-    <td>{{ t.network_tag }}</td>
-    <td>{{ t.lang }}</td>
-    <td><span class="badge {{ 'active' if t.active else 'paused' }}">{{ 'активен' if t.active else 'на паузе' }}</span></td>
-    <td>
-      <form class="inline" method="post" action="/targets/{{ t.id }}/toggle">
-        <button type="submit" class="secondary">{{ 'Отключить' if t.active else 'Включить' }}</button>
-      </form>
-    </td>
-  </tr>
-  {% endfor %}
-</table>
+{% if targets %}
+{% for t in targets %}
+<div class="list-item">
+  <div class="row">
+    <span class="title">@{{ t.username }}</span>
+    <span class="badge {{ 'on' if t.active else 'off' }}">{{ 'активен' if t.active else 'отключён' }}</span>
+  </div>
+  <div class="meta">{{ t.network_tag or '—' }} · {{ t.lang }}</div>
+  <div class="actions">
+    <form method="post" action="/targets/{{ t.id }}/toggle">
+      <button type="submit" class="secondary">{{ 'Отключить' if t.active else 'Включить' }}</button>
+    </form>
+  </div>
+</div>
+{% endfor %}
+{% else %}
+<div class="empty-state">Целевых каналов пока нет — добавьте первый выше.</div>
+{% endif %}
 {% endblock %}

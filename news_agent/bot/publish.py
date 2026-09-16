@@ -1,11 +1,13 @@
 """Логика публикации одобренного черновика в целевой канал (ТЗ 2.4)."""
 from __future__ import annotations
 
+import html
 import logging
 import shutil
 from pathlib import Path
 
 from aiogram import Bot
+from aiogram.enums import ParseMode
 from aiogram.types import FSInputFile, InputMediaPhoto, InputMediaVideo
 
 from news_agent.db.models import DraftPost, PublishedPost, TargetChannel, utcnow
@@ -14,6 +16,13 @@ from news_agent.db.session import session_scope
 logger = logging.getLogger(__name__)
 
 _VIDEO_EXTS = {".mp4", ".mov", ".mkv", ".webm"}
+
+SUBSCRIBE_LINK = "https://t.me/+pvdWFH9kAwk1OTQ0"
+
+
+def _with_subscribe_link(text: str) -> str:
+    """Добавляет кликабельную ссылку «ПОДПИСАТЬСЯ» в конец каждого публикуемого поста."""
+    return f'{html.escape(text)}\n\n<a href="{SUBSCRIBE_LINK}">ПОДПИСАТЬСЯ</a>'
 
 
 def _cleanup_media(media_paths: list[str]) -> None:
@@ -43,21 +52,21 @@ async def publish_draft(bot: Bot, draft_id: int, target_channel_id: int, decided
         if target is None:
             raise ValueError(f"target_channel {target_channel_id} не найден")
 
-        text = draft.translated_text
+        text = _with_subscribe_link(draft.translated_text)
         media_paths = list(draft.media_paths)
         chat_id = target.tg_chat_id or f"@{target.username}"
 
     tg_message_id: int
     if not media_paths:
-        message = await bot.send_message(chat_id=chat_id, text=text)
+        message = await bot.send_message(chat_id=chat_id, text=text, parse_mode=ParseMode.HTML)
         tg_message_id = message.message_id
     elif len(media_paths) == 1:
         path = media_paths[0]
         file = FSInputFile(path)
         if Path(path).suffix.lower() in _VIDEO_EXTS:
-            message = await bot.send_video(chat_id=chat_id, video=file, caption=text)
+            message = await bot.send_video(chat_id=chat_id, video=file, caption=text, parse_mode=ParseMode.HTML)
         else:
-            message = await bot.send_photo(chat_id=chat_id, photo=file, caption=text)
+            message = await bot.send_photo(chat_id=chat_id, photo=file, caption=text, parse_mode=ParseMode.HTML)
         tg_message_id = message.message_id
     else:
         media_group = []
@@ -65,9 +74,9 @@ async def publish_draft(bot: Bot, draft_id: int, target_channel_id: int, decided
             file = FSInputFile(path)
             caption = text if i == 0 else None
             if Path(path).suffix.lower() in _VIDEO_EXTS:
-                media_group.append(InputMediaVideo(media=file, caption=caption))
+                media_group.append(InputMediaVideo(media=file, caption=caption, parse_mode=ParseMode.HTML))
             else:
-                media_group.append(InputMediaPhoto(media=file, caption=caption))
+                media_group.append(InputMediaPhoto(media=file, caption=caption, parse_mode=ParseMode.HTML))
         messages = await bot.send_media_group(chat_id=chat_id, media=media_group)
         tg_message_id = messages[0].message_id
 

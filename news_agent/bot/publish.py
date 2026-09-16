@@ -8,7 +8,7 @@ from pathlib import Path
 
 from aiogram import Bot
 from aiogram.enums import ParseMode
-from aiogram.types import FSInputFile, InputMediaPhoto, InputMediaVideo
+from aiogram.types import FSInputFile, InputMediaPhoto, InputMediaVideo, LinkPreviewOptions
 
 from news_agent.db.models import DraftPost, PublishedPost, TargetChannel, utcnow
 from news_agent.db.session import session_scope
@@ -58,7 +58,12 @@ async def publish_draft(bot: Bot, draft_id: int, target_channel_id: int, decided
 
     tg_message_id: int
     if not media_paths:
-        message = await bot.send_message(chat_id=chat_id, text=text, parse_mode=ParseMode.HTML)
+        message = await bot.send_message(
+            chat_id=chat_id,
+            text=text,
+            parse_mode=ParseMode.HTML,
+            link_preview_options=LinkPreviewOptions(is_disabled=True),
+        )
         tg_message_id = message.message_id
     elif len(media_paths) == 1:
         path = media_paths[0]

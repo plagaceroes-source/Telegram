@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import datetime as dt
 
-from sqlalchemy import JSON, DateTime, ForeignKey, Index, String, UniqueConstraint
+from sqlalchemy import JSON, BigInteger, DateTime, ForeignKey, Index, String, UniqueConstraint
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -50,7 +50,7 @@ class Source(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     username: Mapped[str] = mapped_column(String(255))
     title: Mapped[str] = mapped_column(String(255), default="")
-    tg_chat_id: Mapped[int | None] = mapped_column(nullable=True)
+    tg_chat_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     lang: Mapped[str] = mapped_column(String(8), default="auto")  # es/ru/uk/... or "auto"
     mode: Mapped[str] = mapped_column(String(16), default="rewrite")  # rewrite / as_is
     active: Mapped[bool] = mapped_column(default=True)
@@ -72,7 +72,7 @@ class TargetChannel(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     username: Mapped[str] = mapped_column(String(255))
     title: Mapped[str] = mapped_column(String(255), default="")
-    tg_chat_id: Mapped[int | None] = mapped_column(nullable=True)
+    tg_chat_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     network_tag: Mapped[str] = mapped_column(String(64), default="")
     lang: Mapped[str] = mapped_column(String(8), default="ru")
     active: Mapped[bool] = mapped_column(default=True)
@@ -114,7 +114,7 @@ class DraftPost(Base):
     status: Mapped[str] = mapped_column(String(16), default="pending_approval")
     # pending_approval / approved / rejected / published
     target_channel_id: Mapped[int | None] = mapped_column(ForeignKey("target_channels.id"), nullable=True)
-    approval_chat_id: Mapped[int | None] = mapped_column(nullable=True)
+    approval_chat_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     approval_message_id: Mapped[int | None] = mapped_column(nullable=True)
     decided_by: Mapped[str] = mapped_column(String(128), default="")
     decided_at: Mapped[dt.datetime | None] = mapped_column(**_TZ_NULLABLE)

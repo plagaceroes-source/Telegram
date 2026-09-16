@@ -1,0 +1,15 @@
+{
+  "name": "News Agent",
+  "short_name": "News Agent",
+  "description": "Админка News Agent — источники, каналы, статистика",
+  "start_url": "/sources",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f5f6f8",
+  "theme_color": "#1c1e21",
+  "orientation": "portrait-primary",
+  "icons": [
+    { "src": "/static/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "/static/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}

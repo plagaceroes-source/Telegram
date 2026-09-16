@@ -5,6 +5,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, Form, Request
 from fastapi.responses import RedirectResponse
+from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import func, select
 from sqlalchemy.orm import selectinload
@@ -25,6 +26,7 @@ from news_agent.db.session import init_db, session_scope
 templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
 
 app = FastAPI(title="News Agent Admin")
+app.mount("/static", StaticFiles(directory=str(Path(__file__).parent / "static")), name="static")
 
 
 @app.on_event("startup")

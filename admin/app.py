@@ -11,6 +11,7 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy import func, select
 from sqlalchemy.orm import selectinload
 
+from news_agent.bot.session import build_bot
 from news_agent.config import settings
 from news_agent.db.models import (
     ChannelStatsDaily,
@@ -275,7 +276,9 @@ async def stats_page(request: Request):
             )
             invite_stats.append(
                 {
+                    "id": link.id,
                     "name": link.name,
+                    "tg_invite_link": link.tg_invite_link,
                     "channel_username": link.target_channel.username if link.target_channel else "?",
                     "source_label": link.source_label,
                     "joins": joins or 0,
@@ -297,12 +300,77 @@ async def stats_page(request: Request):
         {
             "active": "stats",
             "channels": channel_rows,
+            "target_channels": channels,
             "chart_series": chart_series,
             "invite_stats": invite_stats,
             "direct_joins": direct_joins or 0,
             "direct_leaves": direct_leaves or 0,
+            "invite_error": request.query_params.get("invite_error"),
         },
     )
+
+
+@app.post("/invite_links")
+async def create_invite_link(
+    target_channel_id: int = Form(...),
+    name: str = Form(...),
+    source_label: str = Form(""),
+    campaign_tag: str = Form(""),
+):
+    name = name.strip()[:32]
+    async with session_scope() as session:
+        target = await session.get(TargetChannel, target_channel_id)
+    if target is None:
+        return RedirectResponse("/stats?invite_error=Канал+не+найден", status_code=303)
+
+    chat_id = target.tg_chat_id or f"@{target.username}"
+    bot = build_bot(settings.bot_token)
+    try:
+        tg_link = await bot.create_chat_invite_link(chat_id=chat_id, name=name)
+    except Exception:
+        return RedirectResponse(
+            "/stats?invite_error=Не+удалось+создать+ссылку+—+бот+должен+быть+админом+канала", status_code=303
+        )
+    finally:
+        await bot.session.close()
+
+    async with session_scope() as session:
+        session.add(
+            InviteLink(
+                target_channel_id=target_channel_id,
+                name=name,
+                tg_invite_link=tg_link.invite_link,
+                source_label=source_label,
+                campaign_tag=campaign_tag,
+                created_by="admin-panel",
+            )
+        )
+    return RedirectResponse("/stats", status_code=303)
+
+
+@app.post("/invite_links/{link_id}/revoke")
+async def revoke_invite_link(link_id: int):
+    async with session_scope() as session:
+        link = await session.get(InviteLink, link_id)
+        if link is None:
+            return RedirectResponse("/stats", status_code=303)
+        target = await session.get(TargetChannel, link.target_channel_id)
+        chat_id = target.tg_chat_id or f"@{target.username}"
+        invite_link_value = link.tg_invite_link
+
+    bot = build_bot(settings.bot_token)
+    try:
+        await bot.revoke_chat_invite_link(chat_id=chat_id, invite_link=invite_link_value)
+    except Exception:
+        pass
+    finally:
+        await bot.session.close()
+
+    async with session_scope() as session:
+        link = await session.get(InviteLink, link_id)
+        if link:
+            link.revoked = True
+    return RedirectResponse("/stats", status_code=303)
 
 
 # --- Настройки (read-only) ---------------------------------------------------

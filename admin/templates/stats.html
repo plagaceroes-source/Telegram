@@ -19,27 +19,59 @@
 {% endif %}
 
 <div class="card">
+  <h3>Создать именную инвайт-ссылку</h3>
+  {% if invite_error %}
+  <div class="empty-state" style="border:1px dashed var(--border-strong); border-radius:var(--radius-md); margin-bottom:12px; color:var(--text);">⚠ {{ invite_error }}</div>
+  {% endif %}
+  {% if target_channels %}
+  <form method="post" action="/invite_links">
+    <label>Канал</label>
+    <select name="target_channel_id" required>
+      {% for t in target_channels %}
+      <option value="{{ t.id }}">@{{ t.username }}</option>
+      {% endfor %}
+    </select>
+
+    <label>Код ссылки (до 32 символов)</label>
+    <input name="name" maxlength="32" placeholder="newsA_ig_story0912" required>
+
+    <label>Описание источника</label>
+    <input name="source_label" placeholder="Instagram Stories / пост от 12.09">
+
+    <label>Кампания (опционально)</label>
+    <input name="campaign_tag" placeholder="">
+
+    <div class="form-actions"><button type="submit">Создать ссылку</button></div>
+  </form>
+  {% else %}
+  <p class="muted">Сначала добавьте хотя бы один целевой канал.</p>
+  {% endif %}
+</div>
+
+<div class="card">
   <h3>Инвайт-ссылки — приток/удержание</h3>
   {% if invite_stats or direct_joins %}
-  <div class="table-wrap">
-    <table>
-      <tr><th>Ссылка</th><th>Канал</th><th>Join</th><th>Leave</th><th>Сейчас</th></tr>
-      {% for row in invite_stats %}
-      <tr>
-        <td>{{ row.name }}{% if row.revoked %} <span class="faint">(отозвана)</span>{% endif %}</td>
-        <td class="muted">@{{ row.channel_username }}</td>
-        <td>{{ row.joins }}</td>
-        <td>{{ row.leaves }}</td>
-        <td>{{ row.joins - row.leaves }}</td>
-      </tr>
-      {% endfor %}
-      <tr>
-        <td colspan="2"><span class="muted">Прямые (без ссылки)</span></td>
-        <td>{{ direct_joins }}</td>
-        <td>{{ direct_leaves }}</td>
-        <td>{{ direct_joins - direct_leaves }}</td>
-      </tr>
-    </table>
+  {% for row in invite_stats %}
+  <div class="list-item">
+    <div class="row">
+      <span class="title">{{ row.name }}</span>
+      <span class="badge {{ 'off' if row.revoked else 'on' }}">{{ 'отозвана' if row.revoked else 'активна' }}</span>
+    </div>
+    <div class="meta">@{{ row.channel_username }}{% if row.source_label %} · {{ row.source_label }}{% endif %}</div>
+    <div class="meta">join {{ row.joins }} · leave {{ row.leaves }} · сейчас {{ row.joins - row.leaves }}</div>
+    <div class="meta" style="word-break:break-all;">{{ row.tg_invite_link }}</div>
+    {% if not row.revoked %}
+    <div class="actions">
+      <form method="post" action="/invite_links/{{ row.id }}/revoke" onsubmit="return confirm('Отозвать ссылку?')">
+        <button type="submit" class="danger">Отозвать</button>
+      </form>
+    </div>
+    {% endif %}
+  </div>
+  {% endfor %}
+  <div class="list-item">
+    <div class="row"><span class="title">Прямые (без ссылки)</span></div>
+    <div class="meta">join {{ direct_joins }} · leave {{ direct_leaves }} · сейчас {{ direct_joins - direct_leaves }}</div>
   </div>
   {% else %}
   <div class="empty-state">Инвайт-ссылок пока нет.</div>

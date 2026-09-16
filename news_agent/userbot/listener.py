@@ -133,6 +133,20 @@ class AccountWorker:
                     media_paths.append(str(path))
 
         async with session_scope() as session:
+            existing = await session.execute(
+                select(RawPost.id).where(
+                    RawPost.source_id == source.id,
+                    RawPost.tg_message_id == messages[0].id,
+                )
+            )
+            if existing.scalars().first() is not None:
+                logger.info(
+                    "Источник %s: сообщение %s уже собрано ранее, пропускаю дубликат",
+                    source.username,
+                    messages[0].id,
+                )
+                return
+
             raw_post = RawPost(
                 source_id=source.id,
                 tg_message_id=messages[0].id,

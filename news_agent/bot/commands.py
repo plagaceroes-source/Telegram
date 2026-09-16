@@ -13,7 +13,7 @@ from aiogram.types import Message
 from sqlalchemy import select
 
 from news_agent.config import settings
-from news_agent.db.models import InviteLink, Source, TargetChannel, UserbotAccount
+from news_agent.db.models import GatedGroup, InviteLink, Source, TargetChannel, UserbotAccount
 from news_agent.db.session import session_scope
 
 logger = logging.getLogger(__name__)
@@ -42,6 +42,9 @@ async def cmd_help(message: Message) -> None:
         "/list_accounts — список аккаунтов-слушателей\n"
         "/create_invite_link <target_id> <name> <source_label...> — создать именную инвайт-ссылку\n"
         "/revoke_invite_link <id> — деактивировать старую ссылку\n"
+        "/add_gated_group <group_chat_id> <target_id> <title...> — включить force-sub в группе\n"
+        "/list_gated_groups — список групп с force-sub\n"
+        "/pause_gated_group <id> / /resume_gated_group <id>\n"
     )
 
 
@@ -249,3 +252,85 @@ async def cmd_revoke_invite_link(message: Message, command: CommandObject) -> No
             link.revoked = True
 
     await message.reply(f"Ссылка #{link_id} деактивирована. История сохранена для отчётов по удержанию.")
+
+
+@router.message(Command("add_gated_group"))
+async def cmd_add_gated_group(message: Message, command: CommandObject) -> None:
+    """Включает force-sub в группе: сообщения не подписанных на target_id участников
+    будут удаляться, пока они не подпишутся на канал."""
+    args = (command.args or "").split(maxsplit=2)
+    if len(args) < 3:
+        await message.reply("Использование: /add_gated_group <group_chat_id> <target_id> <title...>")
+        return
+    group_chat_id_str, target_id_str, title = args
+    try:
+        group_chat_id = int(group_chat_id_str)
+        target_id = int(target_id_str)
+    except ValueError:
+        await message.reply("group_chat_id и target_id должны быть числами")
+        return
+
+    async with session_scope() as session:
+        target = await session.get(TargetChannel, target_id)
+        if target is None:
+            await message.reply("Целевой канал не найден")
+            return
+        gated = GatedGroup(
+            tg_chat_id=group_chat_id,
+            title=title,
+            target_channel_id=target_id,
+            added_by=str(message.from_user.id),
+        )
+        session.add(gated)
+        await session.flush()
+        gated_id = gated.id
+
+    from news_agent.bot import force_sub  # локальный импорт — избегаем циклической зависимости
+
+    await force_sub.ensure_gated_group_invite_links(message.bot)
+    await message.reply(
+        f"Force-sub включён для группы «{title}» (id={gated_id}). "
+        "Убедитесь, что бот — админ и в этой группе (право удалять сообщения), и в целевом канале "
+        "(право приглашать пользователей по ссылке)."
+    )
+
+
+@router.message(Command("list_gated_groups"))
+async def cmd_list_gated_groups(message: Message) -> None:
+    async with session_scope() as session:
+        result = await session.execute(select(GatedGroup).order_by(GatedGroup.id))
+        gated_groups = list(result.scalars())
+    if not gated_groups:
+        await message.reply("Групп с force-sub пока нет.")
+        return
+    lines = [
+        f"#{g.id} «{g.title}» chat_id={g.tg_chat_id} target={g.target_channel_id} "
+        f"active={'да' if g.active else 'нет'}"
+        for g in gated_groups
+    ]
+    await message.reply("\n".join(lines))
+
+
+@router.message(Command("pause_gated_group"))
+async def cmd_pause_gated_group(message: Message, command: CommandObject) -> None:
+    await _set_gated_group_active(message, command, active=False)
+
+
+@router.message(Command("resume_gated_group"))
+async def cmd_resume_gated_group(message: Message, command: CommandObject) -> None:
+    await _set_gated_group_active(message, command, active=True)
+
+
+async def _set_gated_group_active(message: Message, command: CommandObject, active: bool) -> None:
+    try:
+        gated_id = int((command.args or "").strip())
+    except ValueError:
+        await message.reply("Использование: /pause_gated_group <id>")
+        return
+    async with session_scope() as session:
+        gated = await session.get(GatedGroup, gated_id)
+        if gated is None:
+            await message.reply("Группа не найдена")
+            return
+        gated.active = active
+    await message.reply(f"Force-sub для группы #{gated_id} теперь {'включён' if active else 'выключен'}.")

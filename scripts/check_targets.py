@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import sys
+import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -22,6 +23,8 @@ async def main() -> None:
             print("NO_TARGET_CHANNELS")
         for t in rows:
             print(f"TARGET id={t.id} username={t.username} active={t.active} tg_chat_id={t.tg_chat_id}")
+    sys.stdout.flush()
+    time.sleep(25)
 
 
 if __name__ == "__main__":

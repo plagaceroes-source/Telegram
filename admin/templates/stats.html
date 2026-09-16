@@ -33,7 +33,10 @@
     </select>
 
     <label>Код ссылки (до 32 символов)</label>
-    <input name="name" maxlength="32" placeholder="newsA_ig_story0912" required>
+    <div style="display:flex; gap:8px;">
+      <input name="name" id="invite-name" maxlength="32" placeholder="bvk_news_..." required style="flex:1; min-width:0;">
+      <button type="button" class="secondary" onclick="generateInviteName()" style="white-space:nowrap;">Сгенерировать</button>
+    </div>
 
     <label>Описание источника</label>
     <input name="source_label" placeholder="Instagram Stories / пост от 12.09">
@@ -80,6 +83,16 @@
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
 <script>
+  function generateInviteName() {
+    const prefix = 'bvk_news';
+    const now = new Date();
+    const mm = String(now.getMonth() + 1).padStart(2, '0');
+    const dd = String(now.getDate()).padStart(2, '0');
+    const rand = Math.random().toString(36).slice(2, 6);
+    const code = `${prefix}_${mm}${dd}_${rand}`;
+    document.getElementById('invite-name').value = code.slice(0, 32);
+  }
+
   const seriesData = {{ chart_series|tojson }};
   Chart.defaults.color = '#9a9a9a';
   Chart.defaults.borderColor = 'rgba(255,255,255,0.12)';

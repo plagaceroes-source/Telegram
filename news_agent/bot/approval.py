@@ -7,7 +7,6 @@ import logging
 from aiogram import Bot, Dispatcher, F, Router
 from aiogram.types import (
     CallbackQuery,
-    FSInputFile,
     InlineKeyboardButton,
     InlineKeyboardMarkup,
     Message,
@@ -21,6 +20,7 @@ from news_agent.bot.session import build_bot
 from news_agent.config import settings
 from news_agent.db.models import DraftPost, RawPost, Source, TargetChannel
 from news_agent.db.session import session_scope
+from news_agent.services.media_relay import resolve_media
 from news_agent.stats.events import register_membership_handlers
 
 logger = logging.getLogger(__name__)
@@ -93,17 +93,17 @@ async def send_draft_card(bot: Bot, draft_id: int) -> None:
         try:
             if not media_paths:
                 message = await bot.send_message(chat_id=chat_id, text=caption, reply_markup=keyboard)
-            elif len(media_paths) == 1:
-                message = await bot.send_photo(
-                    chat_id=chat_id, photo=FSInputFile(media_paths[0]), caption=caption, reply_markup=keyboard
-                )
             else:
-                message = await bot.send_photo(
-                    chat_id=chat_id,
-                    photo=FSInputFile(media_paths[0]),
-                    caption=caption + f"\n\n(+{len(media_paths) - 1} медиафайлов)",
-                    reply_markup=keyboard,
-                )
+                media_type, source = resolve_media(media_paths[0])
+                full_caption = caption if len(media_paths) == 1 else caption + f"\n\n(+{len(media_paths) - 1} медиафайлов)"
+                if media_type == "video":
+                    message = await bot.send_video(
+                        chat_id=chat_id, video=source, caption=full_caption, reply_markup=keyboard
+                    )
+                else:
+                    message = await bot.send_photo(
+                        chat_id=chat_id, photo=source, caption=full_caption, reply_markup=keyboard
+                    )
         except Exception:
             logger.exception("Не удалось отправить карточку черновика %s в чат %s", draft_id, chat_id)
             continue

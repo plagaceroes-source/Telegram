@@ -15,10 +15,12 @@ from sqlalchemy import select
 from telethon import TelegramClient, events
 from telethon.tl.functions.channels import JoinChannelRequest
 
+from news_agent.bot.session import build_bot
 from news_agent.config import settings
 from news_agent.db.models import RawPost, Source, UserbotAccount
 from news_agent.db.session import session_scope
 from news_agent.services.language import detect_language
+from news_agent.services.media_relay import upload_and_get_ref
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +31,7 @@ class AccountWorker:
     def __init__(self, account_id: int) -> None:
         self.account_id = account_id
         self.client: TelegramClient | None = None
+        self.bot = build_bot(settings.bot_token) if settings.bot_token else None
 
     async def start(self) -> None:
         async with session_scope() as session:
@@ -129,8 +132,29 @@ class AccountWorker:
             if msg.media:
                 post_dir.mkdir(parents=True, exist_ok=True)
                 path = await self.client.download_media(msg, file=f"{post_dir}/")
-                if path:
+                if not path:
+                    continue
+                if self.bot and settings.storage_chat_id:
+                    try:
+                        ref = await upload_and_get_ref(self.bot, settings.storage_chat_id, path)
+                        media_paths.append(ref)
+                    except Exception:
+                        logger.exception(
+                            "Источник %s: не удалось передать медиа %s через Bot API, пост будет без него",
+                            source.username,
+                            path,
+                        )
+                    finally:
+                        Path(path).unlink(missing_ok=True)
+                else:
+                    # Нет бота/служебного чата — старое поведение (путь на локальном
+                    # диске юзербота; не сработает, если bot/publish работают в другом сервисе).
                     media_paths.append(str(path))
+        try:
+            if post_dir.exists() and not any(post_dir.iterdir()):
+                post_dir.rmdir()
+        except OSError:
+            pass
 
         async with session_scope() as session:
             existing = await session.execute(

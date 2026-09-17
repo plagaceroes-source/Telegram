@@ -30,7 +30,9 @@ async def main() -> None:
             print(
                 f"DRAFT id={d.id} raw_post_id={d.raw_post_id} source={source.username if source else '?'} "
                 f"status={d.status} media_paths={d.media_paths} approval_chat_id={d.approval_chat_id} "
-                f"approval_message_id={d.approval_message_id} created_at={d.created_at}"
+                f"approval_message_id={d.approval_message_id} created_at={d.created_at}\n"
+                f"  raw_text={raw.text[:150]!r}\n"
+                f"  translated_text={d.translated_text[:150]!r}"
             )
     sys.stdout.flush()
     time.sleep(15)

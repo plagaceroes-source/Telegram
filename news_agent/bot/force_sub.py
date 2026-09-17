@@ -9,10 +9,11 @@
 from __future__ import annotations
 
 import asyncio
+import html
 import logging
 
 from aiogram import Bot, F, Router
-from aiogram.enums import ChatMemberStatus
+from aiogram.enums import ChatMemberStatus, ParseMode
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, Message
 from sqlalchemy import select
 
@@ -131,26 +132,29 @@ async def check_subscription_on_message(message: Message, bot: Bot) -> None:
 
     invite_link = await _get_or_create_invite_link(bot, gated, target)
     channel_title = target.title or f"@{target.username}"
+    safe_name = html.escape(message.from_user.first_name or "")
+    safe_title = html.escape(channel_title)
 
     if invite_link:
         keyboard = InlineKeyboardMarkup(
             inline_keyboard=[[InlineKeyboardButton(text=f"Подписаться на «{channel_title}»", url=invite_link)]]
         )
+        channel_link = f'<a href="{html.escape(invite_link)}">{safe_title}</a>'
         text = (
-            f"{message.from_user.first_name}, мы публикуем ваши объявления совершенно бесплатно, "
+            f"{safe_name}, мы публикуем ваши объявления совершенно бесплатно, "
             f"чтобы и дальше пользоваться этой возможностью и писать в этой группе, подпишись, "
-            f"пожалуйста, на канал «{channel_title}». Подпишитесь и попробуйте снова 👇"
+            f"пожалуйста, на канал «{channel_link}». Подпишитесь и попробуйте снова 👇"
         )
     else:
         keyboard = None
         text = (
-            f"{message.from_user.first_name}, мы публикуем ваши объявления совершенно бесплатно, "
+            f"{safe_name}, мы публикуем ваши объявления совершенно бесплатно, "
             f"чтобы и дальше пользоваться этой возможностью и писать в этой группе, подпишись, "
-            f"пожалуйста, на канал «{channel_title}»."
+            f"пожалуйста, на канал «{safe_title}»."
         )
 
     try:
-        warning = await message.answer(text, reply_markup=keyboard)
+        warning = await message.answer(text, reply_markup=keyboard, parse_mode=ParseMode.HTML)
     except Exception:
         logger.exception("Не удалось отправить предупреждение в чат %s", message.chat.id)
         return

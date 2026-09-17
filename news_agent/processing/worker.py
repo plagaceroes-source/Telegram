@@ -10,7 +10,7 @@ from sqlalchemy import select
 from news_agent.config import settings
 from news_agent.db.models import DraftPost, RawPost, Source
 from news_agent.db.session import session_scope
-from news_agent.services.ai_provider import rewrite_only, translate_and_rewrite
+from news_agent.services.ai_provider import translate_and_rewrite
 
 logger = logging.getLogger(__name__)
 
@@ -71,18 +71,19 @@ async def _process_one(raw_post_id: int) -> None:
         text = raw_post.text
         media_paths = list(raw_post.media_paths)
         source_lang = source.lang if source and source.lang != "auto" else raw_post.detected_lang
-        mode = source.mode if source else "rewrite"
 
     target_lang = settings.target_language
 
+    # ИИ вызывается только там, где реально нужен перевод (язык источника отличается
+    # от целевого) — посты, уже написанные на целевом языке, публикуются без
+    # изменений: это экономит квоту AI-провайдера и не требует рерайта того, что
+    # и так на нужном языке.
     if not text.strip():
         translated_text = ""
     elif source_lang and source_lang != target_lang:
         translated_text = await translate_and_rewrite(text, source_lang, target_lang)
-    elif mode == "as_is":
-        translated_text = text
     else:
-        translated_text = await rewrite_only(text, target_lang)
+        translated_text = text
 
     async with session_scope() as session:
         raw_post = await session.get(RawPost, raw_post_id)

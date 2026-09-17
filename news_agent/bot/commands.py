@@ -45,6 +45,7 @@ async def cmd_help(message: Message) -> None:
         "/add_gated_group <group_chat_id> <target_id> <title...> — включить force-sub в группе\n"
         "/list_gated_groups — список групп с force-sub\n"
         "/pause_gated_group <id> / /resume_gated_group <id>\n"
+        "/rename_gated_group <id> <название> — переименовать группу\n"
     )
 
 
@@ -258,7 +259,8 @@ async def cmd_revoke_invite_link(message: Message, command: CommandObject) -> No
 async def cmd_add_gated_group(message: Message, command: CommandObject) -> None:
     """Включает force-sub в группе: сообщения не подписанных на target_id участников
     будут удаляться, пока они не подпишутся на канал."""
-    args = (command.args or "").split(maxsplit=2)
+    first_line, _, rest = (command.args or "").partition("\n")
+    args = first_line.split(maxsplit=2)
     if len(args) < 3:
         await message.reply("Использование: /add_gated_group <group_chat_id> <target_id> <title...>")
         return
@@ -288,11 +290,39 @@ async def cmd_add_gated_group(message: Message, command: CommandObject) -> None:
     from news_agent.bot import force_sub  # локальный импорт — избегаем циклической зависимости
 
     await force_sub.ensure_gated_group_invite_links(message.bot)
-    await message.reply(
+    reply = (
         f"Force-sub включён для группы «{title}» (id={gated_id}). "
         "Убедитесь, что бот — админ и в этой группе (право удалять сообщения), и в целевом канале "
         "(право приглашать пользователей по ссылке)."
     )
+    if rest.strip():
+        reply += (
+            "\n\n⚠️ В сообщении было что-то ещё на следующей строке — я это проигнорировал. "
+            "Если хотели включить force-sub ещё для одной группы, отправьте /add_gated_group "
+            "для неё отдельным сообщением."
+        )
+    await message.reply(reply)
+
+
+@router.message(Command("rename_gated_group"))
+async def cmd_rename_gated_group(message: Message, command: CommandObject) -> None:
+    args = (command.args or "").split(maxsplit=1)
+    if len(args) < 2:
+        await message.reply("Использование: /rename_gated_group <id> <новое_название>")
+        return
+    gated_id_str, title = args
+    try:
+        gated_id = int(gated_id_str)
+    except ValueError:
+        await message.reply("id должен быть числом")
+        return
+    async with session_scope() as session:
+        gated = await session.get(GatedGroup, gated_id)
+        if gated is None:
+            await message.reply("Группа не найдена")
+            return
+        gated.title = title
+    await message.reply(f"Название группы #{gated_id} обновлено на «{title}».")
 
 
 @router.message(Command("list_gated_groups"))

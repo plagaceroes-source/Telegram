@@ -197,3 +197,22 @@ class ChannelStatsDaily(Base):
     target_channel: Mapped[TargetChannel] = relationship()
 
     __table_args__ = (Index("ix_channel_stats_daily_channel_time", "target_channel_id", "snapshot_at"),)
+
+
+# --- force-sub gating groups ---------------------------------------------
+
+class GatedGroup(Base):
+    """Группа, где сообщения участников, не подписанных на target_channel,
+    удаляются, пока они не подпишутся (force-sub)."""
+
+    __tablename__ = "gated_groups"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    tg_chat_id: Mapped[int] = mapped_column(BigInteger, unique=True)
+    title: Mapped[str] = mapped_column(String(255), default="")
+    target_channel_id: Mapped[int] = mapped_column(ForeignKey("target_channels.id"))
+    active: Mapped[bool] = mapped_column(default=True)
+    added_at: Mapped[dt.datetime] = mapped_column(**_TZ_NOW)
+    added_by: Mapped[str] = mapped_column(String(128), default="")
+
+    target_channel: Mapped[TargetChannel] = relationship()

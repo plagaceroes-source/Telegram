@@ -18,6 +18,10 @@ logger = logging.getLogger(__name__)
 _VIDEO_EXTS = {".mp4", ".mov", ".mkv", ".webm"}
 _PREFIX = "tgfile"
 
+# Telegram ограничивает caption для фото/видео 1024 символами (у обычных текстовых
+# сообщений лимит 4096) — длинный текст новости туда просто не влезает.
+CAPTION_LIMIT = 1024
+
 
 def encode_ref(media_type: str, file_id: str) -> str:
     return f"{_PREFIX}:{media_type}:{file_id}"

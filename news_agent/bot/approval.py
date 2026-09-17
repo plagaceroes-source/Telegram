@@ -21,7 +21,7 @@ from news_agent.bot.session import build_bot
 from news_agent.config import settings
 from news_agent.db.models import DraftPost, RawPost, Source, TargetChannel
 from news_agent.db.session import session_scope
-from news_agent.services.media_relay import resolve_media
+from news_agent.services.media_relay import CAPTION_LIMIT, resolve_media
 from news_agent.stats.events import register_membership_handlers
 
 logger = logging.getLogger(__name__)
@@ -97,7 +97,16 @@ async def send_draft_card(bot: Bot, draft_id: int) -> None:
             else:
                 media_type, source = resolve_media(media_paths[0])
                 full_caption = caption if len(media_paths) == 1 else caption + f"\n\n(+{len(media_paths) - 1} медиафайлов)"
-                if media_type == "video":
+                if len(full_caption) > CAPTION_LIMIT:
+                    # Не влезает в лимит подписи к медиа — шлём медиа без подписи,
+                    # а текст с кнопками отдельным сообщением (иначе Telegram
+                    # отклонит весь запрос, и карточка не дойдёт вовсе).
+                    if media_type == "video":
+                        await bot.send_video(chat_id=chat_id, video=source)
+                    else:
+                        await bot.send_photo(chat_id=chat_id, photo=source)
+                    message = await bot.send_message(chat_id=chat_id, text=full_caption, reply_markup=keyboard)
+                elif media_type == "video":
                     message = await bot.send_video(
                         chat_id=chat_id, video=source, caption=full_caption, reply_markup=keyboard
                     )

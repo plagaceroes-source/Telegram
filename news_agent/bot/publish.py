@@ -12,7 +12,7 @@ from aiogram.types import InputMediaPhoto, InputMediaVideo, LinkPreviewOptions
 
 from news_agent.db.models import DraftPost, PublishedPost, TargetChannel, utcnow
 from news_agent.db.session import session_scope
-from news_agent.services.media_relay import is_file_ref, resolve_media
+from news_agent.services.media_relay import CAPTION_LIMIT, is_file_ref, resolve_media
 
 logger = logging.getLogger(__name__)
 
@@ -68,14 +68,30 @@ async def publish_draft(bot: Bot, draft_id: int, target_channel_id: int, decided
             link_preview_options=LinkPreviewOptions(is_disabled=True),
         )
         tg_message_id = message.message_id
-    elif len(media_paths) == 1:
+    elif len(media_paths) == 1 and len(text) <= CAPTION_LIMIT:
         media_type, source = resolve_media(media_paths[0])
         if media_type == "video":
             message = await bot.send_video(chat_id=chat_id, video=source, caption=text, parse_mode=ParseMode.HTML)
         else:
             message = await bot.send_photo(chat_id=chat_id, photo=source, caption=text, parse_mode=ParseMode.HTML)
         tg_message_id = message.message_id
-    else:
+    elif len(media_paths) == 1:
+        # Текст не влезает в лимит подписи к медиа (1024 симв.) — иначе Telegram
+        # отклонит весь запрос, и пост не опубликуется вовсе. Шлём медиа без
+        # подписи и текст отдельным сообщением следом.
+        media_type, source = resolve_media(media_paths[0])
+        if media_type == "video":
+            await bot.send_video(chat_id=chat_id, video=source)
+        else:
+            await bot.send_photo(chat_id=chat_id, photo=source)
+        message = await bot.send_message(
+            chat_id=chat_id,
+            text=text,
+            parse_mode=ParseMode.HTML,
+            link_preview_options=LinkPreviewOptions(is_disabled=True),
+        )
+        tg_message_id = message.message_id
+    elif len(text) <= CAPTION_LIMIT:
         media_group = []
         for i, path in enumerate(media_paths):
             media_type, source = resolve_media(path)
@@ -85,6 +101,22 @@ async def publish_draft(bot: Bot, draft_id: int, target_channel_id: int, decided
             else:
                 media_group.append(InputMediaPhoto(media=source, caption=caption, parse_mode=ParseMode.HTML))
         messages = await bot.send_media_group(chat_id=chat_id, media=media_group)
+        tg_message_id = messages[0].message_id
+    else:
+        media_group = []
+        for path in media_paths:
+            media_type, source = resolve_media(path)
+            if media_type == "video":
+                media_group.append(InputMediaVideo(media=source))
+            else:
+                media_group.append(InputMediaPhoto(media=source))
+        messages = await bot.send_media_group(chat_id=chat_id, media=media_group)
+        await bot.send_message(
+            chat_id=chat_id,
+            text=text,
+            parse_mode=ParseMode.HTML,
+            link_preview_options=LinkPreviewOptions(is_disabled=True),
+        )
         tg_message_id = messages[0].message_id
 
     async with session_scope() as session:

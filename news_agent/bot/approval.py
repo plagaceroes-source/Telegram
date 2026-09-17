@@ -7,6 +7,7 @@ import logging
 from aiogram import Bot, Dispatcher, F, Router
 from aiogram.types import (
     CallbackQuery,
+    ForceReply,
     InlineKeyboardButton,
     InlineKeyboardMarkup,
     Message,
@@ -199,7 +200,12 @@ async def on_edit_request(callback: CallbackQuery) -> None:
         return
     _awaiting_edit[callback.from_user.id] = draft_id
     await callback.answer()
-    await callback.message.reply(f"Пришлите следующим сообщением новый текст для черновика #{draft_id}.")
+    # force_reply обязателен: в группе с включённым privacy mode бот не получает обычные
+    # текстовые сообщения, только команды и ответы (reply) на свои сообщения.
+    await callback.message.reply(
+        f"Пришлите следующим сообщением новый текст для черновика #{draft_id}.",
+        reply_markup=ForceReply(selective=True),
+    )
 
 
 def _has_pending_edit(message: Message) -> bool:

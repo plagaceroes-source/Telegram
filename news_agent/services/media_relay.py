@@ -7,10 +7,13 @@ userbot и bot — разные Railway-сервисы с разными дис�
 """
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 
 from aiogram import Bot
 from aiogram.types import FSInputFile
+
+logger = logging.getLogger(__name__)
 
 _VIDEO_EXTS = {".mp4", ".mov", ".mkv", ".webm"}
 _PREFIX = "tgfile"
@@ -50,4 +53,13 @@ async def upload_and_get_ref(bot: Bot, chat_id: int, local_path: str) -> str:
         message = await bot.send_photo(chat_id=chat_id, photo=file)
         file_id = message.photo[-1].file_id
         media_type = "photo"
+
+    # По умолчанию STORAGE_CHAT_ID совпадает с APPROVAL_CHAT_ID — без удаления
+    # эта служебная заливка (без текста и кнопок) засоряла бы чат одобрения
+    # отдельным "голым" сообщением перед каждой настоящей карточкой.
+    try:
+        await bot.delete_message(chat_id=chat_id, message_id=message.message_id)
+    except Exception:
+        logger.warning("Не удалось удалить служебное сообщение-релей %s в чате %s", message.message_id, chat_id)
+
     return encode_ref(media_type, file_id)

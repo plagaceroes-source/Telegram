@@ -143,7 +143,7 @@ async def check_subscription_on_message(message: Message, bot: Bot) -> None:
         text = (
             f"{safe_name}, мы публикуем ваши объявления совершенно бесплатно, "
             f"чтобы и дальше пользоваться этой возможностью и писать в этой группе, подпишись, "
-            f"пожалуйста, на канал ⚡️ {channel_link} ⚡️\n"
+            f"пожалуйста, на канал 👇 {channel_link}\n\n"
             f"Подпишитесь и попробуйте снова 👇"
         )
     else:
@@ -151,7 +151,7 @@ async def check_subscription_on_message(message: Message, bot: Bot) -> None:
         text = (
             f"{safe_name}, мы публикуем ваши объявления совершенно бесплатно, "
             f"чтобы и дальше пользоваться этой возможностью и писать в этой группе, подпишись, "
-            f"пожалуйста, на канал ⚡️ {safe_title} ⚡️"
+            f"пожалуйста, на канал {safe_title}."
         )
 
     try:

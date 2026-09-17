@@ -39,6 +39,7 @@ async def cmd_help(message: Message) -> None:
         "/pause_source <id> / /resume_source <id>\n"
         "/add_target <username> <network_tag> <lang> — добавить целевой канал\n"
         "/list_targets — список целевых каналов\n"
+        "/rename_target <id> <название> — задать название канала (для текста force-sub)\n"
         "/list_accounts — список аккаунтов-слушателей\n"
         "/create_invite_link <target_id> <name> <source_label...> — создать именную инвайт-ссылку\n"
         "/revoke_invite_link <id> — деактивировать старую ссылку\n"
@@ -154,10 +155,34 @@ async def cmd_list_targets(message: Message) -> None:
         await message.reply("Целевых каналов пока нет.")
         return
     lines = [
-        f"#{t.id} @{t.username} — network={t.network_tag} lang={t.lang} active={'да' if t.active else 'нет'}"
+        f"#{t.id} @{t.username} «{t.title}» — network={t.network_tag} lang={t.lang} "
+        f"active={'да' if t.active else 'нет'}"
         for t in targets
     ]
     await message.reply("\n".join(lines))
+
+
+@router.message(Command("rename_target"))
+async def cmd_rename_target(message: Message, command: CommandObject) -> None:
+    """Задаёт человекочитаемое название канала — используется, например, в тексте
+    предупреждения force-sub вместо @username."""
+    args = (command.args or "").split(maxsplit=1)
+    if len(args) < 2:
+        await message.reply("Использование: /rename_target <id> <название>")
+        return
+    target_id_str, title = args
+    try:
+        target_id = int(target_id_str)
+    except ValueError:
+        await message.reply("id должен быть числом")
+        return
+    async with session_scope() as session:
+        target = await session.get(TargetChannel, target_id)
+        if target is None:
+            await message.reply("Целевой канал не найден")
+            return
+        target.title = title
+    await message.reply(f"Название канала #{target_id} обновлено на «{title}».")
 
 
 @router.message(Command("list_accounts"))

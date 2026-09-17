@@ -137,14 +137,16 @@ async def check_subscription_on_message(message: Message, bot: Bot) -> None:
             inline_keyboard=[[InlineKeyboardButton(text=f"Подписаться на «{channel_title}»", url=invite_link)]]
         )
         text = (
-            f"{message.from_user.first_name}, чтобы писать в этой группе, нужно быть "
-            f"подписанным на канал «{channel_title}». Подпишитесь и попробуйте снова 👇"
+            f"{message.from_user.first_name}, мы публикуем ваши объявления совершенно бесплатно, "
+            f"чтобы и дальше пользоваться этой возможностью и писать в этой группе, подпишись, "
+            f"пожалуйста, на канал «{channel_title}». Подпишитесь и попробуйте снова 👇"
         )
     else:
         keyboard = None
         text = (
-            f"{message.from_user.first_name}, чтобы писать в этой группе, нужно быть "
-            f"подписанным на канал «{channel_title}»."
+            f"{message.from_user.first_name}, мы публикуем ваши объявления совершенно бесплатно, "
+            f"чтобы и дальше пользоваться этой возможностью и писать в этой группе, подпишись, "
+            f"пожалуйста, на канал «{channel_title}»."
         )
 
     try:

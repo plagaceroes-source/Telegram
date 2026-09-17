@@ -15,6 +15,7 @@ from aiogram.types import (
 from sqlalchemy import select
 
 from news_agent.bot import commands as admin_commands
+from news_agent.bot import force_sub
 from news_agent.bot.publish import publish_draft, reject_draft
 from news_agent.bot.session import build_bot
 from news_agent.config import settings
@@ -225,6 +226,7 @@ def create_dispatcher() -> Dispatcher:
     dp = Dispatcher()
     dp.include_router(router)
     dp.include_router(admin_commands.router)
+    dp.include_router(force_sub.router)
     register_membership_handlers(dp)
     return dp
 
@@ -234,6 +236,8 @@ async def run_forever() -> None:
         raise SystemExit("BOT_TOKEN не задан")
     bot = build_bot(settings.bot_token)
     dp = create_dispatcher()
+
+    await force_sub.ensure_gated_group_invite_links(bot)
 
     polling_task = asyncio.create_task(poll_pending_drafts(bot))
     try:

@@ -13,7 +13,7 @@ from aiogram.types import Message
 from sqlalchemy import select
 
 from news_agent.config import settings
-from news_agent.db.models import InviteLink, Source, TargetChannel, UserbotAccount
+from news_agent.db.models import GatedGroup, InviteLink, Source, TargetChannel, UserbotAccount
 from news_agent.db.session import session_scope
 
 logger = logging.getLogger(__name__)
@@ -39,9 +39,14 @@ async def cmd_help(message: Message) -> None:
         "/pause_source <id> / /resume_source <id>\n"
         "/add_target <username> <network_tag> <lang> — добавить целевой канал\n"
         "/list_targets — список целевых каналов\n"
+        "/rename_target <id> <название> — задать название канала (для текста force-sub)\n"
         "/list_accounts — список аккаунтов-слушателей\n"
         "/create_invite_link <target_id> <name> <source_label...> — создать именную инвайт-ссылку\n"
         "/revoke_invite_link <id> — деактивировать старую ссылку\n"
+        "/add_gated_group <group_chat_id> <target_id> <title...> — включить force-sub в группе\n"
+        "/list_gated_groups — список групп с force-sub\n"
+        "/pause_gated_group <id> / /resume_gated_group <id>\n"
+        "/rename_gated_group <id> <название> — переименовать группу\n"
     )
 
 
@@ -150,10 +155,34 @@ async def cmd_list_targets(message: Message) -> None:
         await message.reply("Целевых каналов пока нет.")
         return
     lines = [
-        f"#{t.id} @{t.username} — network={t.network_tag} lang={t.lang} active={'да' if t.active else 'нет'}"
+        f"#{t.id} @{t.username} «{t.title}» — network={t.network_tag} lang={t.lang} "
+        f"active={'да' if t.active else 'нет'}"
         for t in targets
     ]
     await message.reply("\n".join(lines))
+
+
+@router.message(Command("rename_target"))
+async def cmd_rename_target(message: Message, command: CommandObject) -> None:
+    """Задаёт человекочитаемое название канала — используется, например, в тексте
+    предупреждения force-sub вместо @username."""
+    args = (command.args or "").split(maxsplit=1)
+    if len(args) < 2:
+        await message.reply("Использование: /rename_target <id> <название>")
+        return
+    target_id_str, title = args
+    try:
+        target_id = int(target_id_str)
+    except ValueError:
+        await message.reply("id должен быть числом")
+        return
+    async with session_scope() as session:
+        target = await session.get(TargetChannel, target_id)
+        if target is None:
+            await message.reply("Целевой канал не найден")
+            return
+        target.title = title
+    await message.reply(f"Название канала #{target_id} обновлено на «{title}».")
 
 
 @router.message(Command("list_accounts"))
@@ -249,3 +278,114 @@ async def cmd_revoke_invite_link(message: Message, command: CommandObject) -> No
             link.revoked = True
 
     await message.reply(f"Ссылка #{link_id} деактивирована. История сохранена для отчётов по удержанию.")
+
+
+@router.message(Command("add_gated_group"))
+async def cmd_add_gated_group(message: Message, command: CommandObject) -> None:
+    """Включает force-sub в группе: сообщения не подписанных на target_id участников
+    будут удаляться, пока они не подпишутся на канал."""
+    first_line, _, rest = (command.args or "").partition("\n")
+    args = first_line.split(maxsplit=2)
+    if len(args) < 3:
+        await message.reply("Использование: /add_gated_group <group_chat_id> <target_id> <title...>")
+        return
+    group_chat_id_str, target_id_str, title = args
+    try:
+        group_chat_id = int(group_chat_id_str)
+        target_id = int(target_id_str)
+    except ValueError:
+        await message.reply("group_chat_id и target_id должны быть числами")
+        return
+
+    async with session_scope() as session:
+        target = await session.get(TargetChannel, target_id)
+        if target is None:
+            await message.reply("Целевой канал не найден")
+            return
+        gated = GatedGroup(
+            tg_chat_id=group_chat_id,
+            title=title,
+            target_channel_id=target_id,
+            added_by=str(message.from_user.id),
+        )
+        session.add(gated)
+        await session.flush()
+        gated_id = gated.id
+
+    from news_agent.bot import force_sub  # локальный импорт — избегаем циклической зависимости
+
+    await force_sub.ensure_gated_group_invite_links(message.bot)
+    reply = (
+        f"Force-sub включён для группы «{title}» (id={gated_id}). "
+        "Убедитесь, что бот — админ и в этой группе (право удалять сообщения), и в целевом канале "
+        "(право приглашать пользователей по ссылке)."
+    )
+    if rest.strip():
+        reply += (
+            "\n\n⚠️ В сообщении было что-то ещё на следующей строке — я это проигнорировал. "
+            "Если хотели включить force-sub ещё для одной группы, отправьте /add_gated_group "
+            "для неё отдельным сообщением."
+        )
+    await message.reply(reply)
+
+
+@router.message(Command("rename_gated_group"))
+async def cmd_rename_gated_group(message: Message, command: CommandObject) -> None:
+    args = (command.args or "").split(maxsplit=1)
+    if len(args) < 2:
+        await message.reply("Использование: /rename_gated_group <id> <новое_название>")
+        return
+    gated_id_str, title = args
+    try:
+        gated_id = int(gated_id_str)
+    except ValueError:
+        await message.reply("id должен быть числом")
+        return
+    async with session_scope() as session:
+        gated = await session.get(GatedGroup, gated_id)
+        if gated is None:
+            await message.reply("Группа не найдена")
+            return
+        gated.title = title
+    await message.reply(f"Название группы #{gated_id} обновлено на «{title}».")
+
+
+@router.message(Command("list_gated_groups"))
+async def cmd_list_gated_groups(message: Message) -> None:
+    async with session_scope() as session:
+        result = await session.execute(select(GatedGroup).order_by(GatedGroup.id))
+        gated_groups = list(result.scalars())
+    if not gated_groups:
+        await message.reply("Групп с force-sub пока нет.")
+        return
+    lines = [
+        f"#{g.id} «{g.title}» chat_id={g.tg_chat_id} target={g.target_channel_id} "
+        f"active={'да' if g.active else 'нет'}"
+        for g in gated_groups
+    ]
+    await message.reply("\n".join(lines))
+
+
+@router.message(Command("pause_gated_group"))
+async def cmd_pause_gated_group(message: Message, command: CommandObject) -> None:
+    await _set_gated_group_active(message, command, active=False)
+
+
+@router.message(Command("resume_gated_group"))
+async def cmd_resume_gated_group(message: Message, command: CommandObject) -> None:
+    await _set_gated_group_active(message, command, active=True)
+
+
+async def _set_gated_group_active(message: Message, command: CommandObject, active: bool) -> None:
+    try:
+        gated_id = int((command.args or "").strip())
+    except ValueError:
+        await message.reply("Использование: /pause_gated_group <id>")
+        return
+    async with session_scope() as session:
+        gated = await session.get(GatedGroup, gated_id)
+        if gated is None:
+            await message.reply("Группа не найдена")
+            return
+        gated.active = active
+    await message.reply(f"Force-sub для группы #{gated_id} теперь {'включён' if active else 'выключен'}.")

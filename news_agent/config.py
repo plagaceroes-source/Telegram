@@ -80,5 +80,8 @@ class Settings:
     # Soft cap on sources per userbot account (Section 2.1: ориентир 20-40).
     max_sources_per_account: int = field(default_factory=lambda: _int("MAX_SOURCES_PER_ACCOUNT", 35))
 
+    # Через сколько секунд удалять предупреждение о force-sub (чтобы не засорять чат).
+    force_sub_warning_ttl: int = field(default_factory=lambda: _int("FORCE_SUB_WARNING_TTL", 30))
+
 
 settings = Settings()

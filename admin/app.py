@@ -173,8 +173,24 @@ async def targets_page(request: Request):
 
 @app.post("/targets")
 async def create_target(username: str = Form(...), network_tag: str = Form(""), lang: str = Form("ru")):
+    clean_username = username.lstrip("@")
+    # Числовой chat_id нужен для сопоставления chat_member-апдейтов (статистика
+    # подписчиков по инвайт-ссылкам, news_agent/stats/events.py ищет TargetChannel
+    # именно по нему) — без него события подписки/отписки никогда не находят канал.
+    tg_chat_id = None
+    bot = build_bot(settings.bot_token)
+    try:
+        chat = await bot.get_chat(chat_id=f"@{clean_username}")
+        tg_chat_id = chat.id
+    except Exception:
+        pass
+    finally:
+        await bot.session.close()
+
     async with session_scope() as session:
-        session.add(TargetChannel(username=username.lstrip("@"), network_tag=network_tag, lang=lang))
+        session.add(
+            TargetChannel(username=clean_username, network_tag=network_tag, lang=lang, tg_chat_id=tg_chat_id)
+        )
     return RedirectResponse("/targets", status_code=303)
 
 

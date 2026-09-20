@@ -32,6 +32,16 @@ app = FastAPI(title="News Agent Admin")
 app.mount("/static", StaticFiles(directory=str(Path(__file__).parent / "static")), name="static")
 
 
+@app.middleware("http")
+async def no_cache(request: Request, call_next):
+    # iOS кэширует HTML standalone-приложения ("На главный экран") очень агрессивно
+    # и может подолгу игнорировать изменения на сервере без явного запрета кэша.
+    response = await call_next(request)
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    response.headers["Pragma"] = "no-cache"
+    return response
+
+
 @app.on_event("startup")
 async def on_startup() -> None:
     await init_db()

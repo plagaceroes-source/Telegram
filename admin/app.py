@@ -257,7 +257,7 @@ async def queue_page(request: Request):
 # --- Статистика --------------------------------------------------------------
 
 @app.get("/stats")
-async def stats_page(request: Request):
+async def stats_page(request: Request, sort: str = "recent"):
     async with session_scope() as session:
         channels_result = await session.execute(select(TargetChannel).order_by(TargetChannel.id))
         channels = list(channels_result.scalars())
@@ -314,6 +314,13 @@ async def stats_page(request: Request):
             select(func.count()).where(SubscriberEvent.is_direct.is_(True), SubscriberEvent.event_type == "leave")
         )
 
+    if sort == "joins":
+        invite_stats.sort(key=lambda r: r["joins"], reverse=True)
+    elif sort == "leaves":
+        invite_stats.sort(key=lambda r: r["leaves"], reverse=True)
+    else:
+        sort = "recent"
+
     return templates.TemplateResponse(
         request,
         "stats.html",
@@ -323,6 +330,7 @@ async def stats_page(request: Request):
             "target_channels": channels,
             "chart_series": chart_series,
             "invite_stats": invite_stats,
+            "invite_sort": sort,
             "direct_joins": direct_joins or 0,
             "direct_leaves": direct_leaves or 0,
             "invite_error": request.query_params.get("invite_error"),

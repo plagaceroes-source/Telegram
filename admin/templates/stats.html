@@ -51,8 +51,13 @@
   {% endif %}
 </div>
 
-<div class="card">
+<div class="card" id="invites">
   <h3>Инвайт-ссылки — приток/удержание</h3>
+  <div class="subtabs">
+    <a href="/stats?sort=recent#invites" class="subtab-btn {{ 'active' if invite_sort == 'recent' }}">Все</a>
+    <a href="/stats?sort=joins#invites" class="subtab-btn {{ 'active' if invite_sort == 'joins' }}">Топ подписок</a>
+    <a href="/stats?sort=leaves#invites" class="subtab-btn {{ 'active' if invite_sort == 'leaves' }}">Топ отписок</a>
+  </div>
   {% if invite_stats or direct_joins %}
   {% for row in invite_stats %}
   <div class="list-item">

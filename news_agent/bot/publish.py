@@ -8,14 +8,13 @@ from pathlib import Path
 
 from aiogram import Bot
 from aiogram.enums import ParseMode
-from aiogram.types import FSInputFile, InputMediaPhoto, InputMediaVideo, LinkPreviewOptions
+from aiogram.types import InputMediaPhoto, InputMediaVideo, LinkPreviewOptions
 
 from news_agent.db.models import DraftPost, PublishedPost, TargetChannel, utcnow
 from news_agent.db.session import session_scope
+from news_agent.services.media_relay import CAPTION_LIMIT, is_file_ref, resolve_media
 
 logger = logging.getLogger(__name__)
-
-_VIDEO_EXTS = {".mp4", ".mov", ".mkv", ".webm"}
 
 SUBSCRIBE_LINK = "https://t.me/+pvdWFH9kAwk1OTQ0"
 
@@ -26,9 +25,13 @@ def _with_subscribe_link(text: str) -> str:
 
 
 def _cleanup_media(media_paths: list[str]) -> None:
-    """Удаляет временные медиафайлы после публикации/отклонения (раздел 5: медиа временное)."""
+    """Удаляет временные медиафайлы после публикации/отклонения (раздел 5: медиа временное).
+
+    Ссылки tgfile:... не занимают места на диске этого сервиса — их нечего удалять."""
     dirs_to_remove = set()
     for path in media_paths:
+        if is_file_ref(path):
+            continue
         p = Path(path)
         dirs_to_remove.add(p.parent)
         try:
@@ -65,24 +68,55 @@ async def publish_draft(bot: Bot, draft_id: int, target_channel_id: int, decided
             link_preview_options=LinkPreviewOptions(is_disabled=True),
         )
         tg_message_id = message.message_id
-    elif len(media_paths) == 1:
-        path = media_paths[0]
-        file = FSInputFile(path)
-        if Path(path).suffix.lower() in _VIDEO_EXTS:
-            message = await bot.send_video(chat_id=chat_id, video=file, caption=text, parse_mode=ParseMode.HTML)
+    elif len(media_paths) == 1 and len(text) <= CAPTION_LIMIT:
+        media_type, source = resolve_media(media_paths[0])
+        if media_type == "video":
+            message = await bot.send_video(chat_id=chat_id, video=source, caption=text, parse_mode=ParseMode.HTML)
         else:
-            message = await bot.send_photo(chat_id=chat_id, photo=file, caption=text, parse_mode=ParseMode.HTML)
+            message = await bot.send_photo(chat_id=chat_id, photo=source, caption=text, parse_mode=ParseMode.HTML)
         tg_message_id = message.message_id
-    else:
+    elif len(media_paths) == 1:
+        # Текст не влезает в лимит подписи к медиа (1024 симв.) — иначе Telegram
+        # отклонит весь запрос, и пост не опубликуется вовсе. Шлём медиа без
+        # подписи и текст отдельным сообщением следом.
+        media_type, source = resolve_media(media_paths[0])
+        if media_type == "video":
+            await bot.send_video(chat_id=chat_id, video=source)
+        else:
+            await bot.send_photo(chat_id=chat_id, photo=source)
+        message = await bot.send_message(
+            chat_id=chat_id,
+            text=text,
+            parse_mode=ParseMode.HTML,
+            link_preview_options=LinkPreviewOptions(is_disabled=True),
+        )
+        tg_message_id = message.message_id
+    elif len(text) <= CAPTION_LIMIT:
         media_group = []
         for i, path in enumerate(media_paths):
-            file = FSInputFile(path)
+            media_type, source = resolve_media(path)
             caption = text if i == 0 else None
-            if Path(path).suffix.lower() in _VIDEO_EXTS:
-                media_group.append(InputMediaVideo(media=file, caption=caption, parse_mode=ParseMode.HTML))
+            if media_type == "video":
+                media_group.append(InputMediaVideo(media=source, caption=caption, parse_mode=ParseMode.HTML))
             else:
-                media_group.append(InputMediaPhoto(media=file, caption=caption, parse_mode=ParseMode.HTML))
+                media_group.append(InputMediaPhoto(media=source, caption=caption, parse_mode=ParseMode.HTML))
         messages = await bot.send_media_group(chat_id=chat_id, media=media_group)
+        tg_message_id = messages[0].message_id
+    else:
+        media_group = []
+        for path in media_paths:
+            media_type, source = resolve_media(path)
+            if media_type == "video":
+                media_group.append(InputMediaVideo(media=source))
+            else:
+                media_group.append(InputMediaPhoto(media=source))
+        messages = await bot.send_media_group(chat_id=chat_id, media=media_group)
+        await bot.send_message(
+            chat_id=chat_id,
+            text=text,
+            parse_mode=ParseMode.HTML,
+            link_preview_options=LinkPreviewOptions(is_disabled=True),
+        )
         tg_message_id = messages[0].message_id
 
     async with session_scope() as session:

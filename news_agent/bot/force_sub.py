@@ -27,6 +27,11 @@ router = Router()
 
 _SUBSCRIBED_STATUSES = {ChatMemberStatus.MEMBER, ChatMemberStatus.ADMINISTRATOR, ChatMemberStatus.CREATOR}
 
+# asyncio хранит только слабую ссылку на созданные через create_task задачи — без
+# сильной ссылки где-то ещё сборщик мусора может уничтожить задачу прямо во время
+# sleep(), до того как она успеет удалить сообщение (см. документацию asyncio.create_task).
+_cleanup_tasks: set[asyncio.Task] = set()
+
 
 def _link_name(gated_group_id: int) -> str:
     return f"grp{gated_group_id}"[:32]  # Telegram ограничивает имя ссылки 32 символами
@@ -160,4 +165,6 @@ async def check_subscription_on_message(message: Message, bot: Bot) -> None:
         logger.exception("Не удалось отправить предупреждение в чат %s", message.chat.id)
         return
 
-    asyncio.create_task(_cleanup_warning(warning, settings.force_sub_warning_ttl))
+    task = asyncio.create_task(_cleanup_warning(warning, settings.force_sub_warning_ttl))
+    _cleanup_tasks.add(task)
+    task.add_done_callback(_cleanup_tasks.discard)

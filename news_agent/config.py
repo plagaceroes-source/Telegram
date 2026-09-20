@@ -41,6 +41,14 @@ class Settings:
     # в APPROVER_CHAT_IDS (старое поведение).
     approval_chat_id: int | None = field(default_factory=lambda: _int("APPROVAL_CHAT_ID", 0) or None)
 
+    # Служебный чат, через который юзербот прогоняет скачанное медиа, чтобы получить
+    # Telegram file_id (userbot и bot — разные Railway-сервисы с разными дисками,
+    # локальный путь к файлу одного недоступен другому). По умолчанию — тот же чат,
+    # что и APPROVAL_CHAT_ID.
+    storage_chat_id: int | None = field(
+        default_factory=lambda: _int("STORAGE_CHAT_ID", 0) or _int("APPROVAL_CHAT_ID", 0) or None
+    )
+
     # Если задан вместе с APPROVAL_CHAT_ID — ограничивает, кто из участников
     # группы может нажимать кнопки (иначе может любой участник группы).
     # Если APPROVAL_CHAT_ID не задан — это список личных чатов для рассылки карточек.

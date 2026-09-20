@@ -3,12 +3,11 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from pathlib import Path
 
 from aiogram import Bot, Dispatcher, F, Router
 from aiogram.types import (
     CallbackQuery,
-    FSInputFile,
+    ForceReply,
     InlineKeyboardButton,
     InlineKeyboardMarkup,
     Message,
@@ -17,11 +16,12 @@ from sqlalchemy import select
 
 from news_agent.bot import commands as admin_commands
 from news_agent.bot import force_sub
-from news_agent.bot.publish import _VIDEO_EXTS, publish_draft, reject_draft
+from news_agent.bot.publish import publish_draft, reject_draft
 from news_agent.bot.session import build_bot
 from news_agent.config import settings
 from news_agent.db.models import DraftPost, RawPost, Source, TargetChannel
 from news_agent.db.session import session_scope
+from news_agent.services.media_relay import CAPTION_LIMIT, resolve_media
 from news_agent.stats.events import register_membership_handlers
 
 logger = logging.getLogger(__name__)
@@ -95,17 +95,24 @@ async def send_draft_card(bot: Bot, draft_id: int) -> None:
             if not media_paths:
                 message = await bot.send_message(chat_id=chat_id, text=caption, reply_markup=keyboard)
             else:
-                path = media_paths[0]
-                media_caption = (
-                    caption if len(media_paths) == 1 else caption + f"\n\n(+{len(media_paths) - 1} медиафайлов)"
-                )
-                if Path(path).suffix.lower() in _VIDEO_EXTS:
+                media_type, source = resolve_media(media_paths[0])
+                full_caption = caption if len(media_paths) == 1 else caption + f"\n\n(+{len(media_paths) - 1} медиафайлов)"
+                if len(full_caption) > CAPTION_LIMIT:
+                    # Не влезает в лимит подписи к медиа — шлём медиа без подписи,
+                    # а текст с кнопками отдельным сообщением (иначе Telegram
+                    # отклонит весь запрос, и карточка не дойдёт вовсе).
+                    if media_type == "video":
+                        await bot.send_video(chat_id=chat_id, video=source)
+                    else:
+                        await bot.send_photo(chat_id=chat_id, photo=source)
+                    message = await bot.send_message(chat_id=chat_id, text=full_caption, reply_markup=keyboard)
+                elif media_type == "video":
                     message = await bot.send_video(
-                        chat_id=chat_id, video=FSInputFile(path), caption=media_caption, reply_markup=keyboard
+                        chat_id=chat_id, video=source, caption=full_caption, reply_markup=keyboard
                     )
                 else:
                     message = await bot.send_photo(
-                        chat_id=chat_id, photo=FSInputFile(path), caption=media_caption, reply_markup=keyboard
+                        chat_id=chat_id, photo=source, caption=full_caption, reply_markup=keyboard
                     )
         except Exception:
             logger.exception("Не удалось отправить карточку черновика %s в чат %s", draft_id, chat_id)
@@ -202,7 +209,12 @@ async def on_edit_request(callback: CallbackQuery) -> None:
         return
     _awaiting_edit[callback.from_user.id] = draft_id
     await callback.answer()
-    await callback.message.reply(f"Пришлите следующим сообщением новый текст для черновика #{draft_id}.")
+    # force_reply обязателен: в группе с включённым privacy mode бот не получает обычные
+    # текстовые сообщения, только команды и ответы (reply) на свои сообщения.
+    await callback.message.reply(
+        f"Пришлите следующим сообщением новый текст для черновика #{draft_id}.",
+        reply_markup=ForceReply(selective=True),
+    )
 
 
 def _has_pending_edit(message: Message) -> bool:

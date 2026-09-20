@@ -139,10 +139,10 @@
       background: rgba(0,0,0,0.92); backdrop-filter: blur(10px);
       border-top: 1px solid var(--border);
       /* env(safe-area-inset-bottom) на некоторых устройствах в standalone-режиме
-         возвращает куда больше типичных ~34px — из-за этого под подписями
-         вкладок появлялся большой чёрный "отступ", визуально неотличимый от
-         фона. Ограничиваем его разумным максимумом. */
-      padding: 8px 6px max(8px, min(env(safe-area-inset-bottom), 14px));
+         возвращает куда больше ожидаемого — вместо того чтобы гадать сколько
+         оставить, убираем его влияние совсем: фиксированный отступ, одинаковый
+         на всех устройствах, вплотную к нижнему краю. */
+      padding: 8px 6px;
     }
     .bottomnav a {
       flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 4px;

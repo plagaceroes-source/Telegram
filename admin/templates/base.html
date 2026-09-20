@@ -77,7 +77,11 @@
     }
 
     .scroll-area {
-      flex: 1 1 auto; overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain;
+      /* min-height:0 обязателен: по умолчанию у flex-элемента min-height:auto,
+         и flex-элемент с overflow:auto внутри flex-колонки может не растягиваться
+         на всё доступное место как ожидается — оставляя пустое пространство
+         именно после последнего элемента (нашего футера). */
+      flex: 1 1 0; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain;
     }
     main { padding: 18px 16px 32px; max-width: 640px; margin: 0 auto; }
     h1 { font-size: 22px; font-weight: 700; margin: 4px 0 16px; letter-spacing: -0.01em; }

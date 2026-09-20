@@ -61,7 +61,7 @@
       <span class="badge {{ 'off' if row.revoked else 'on' }}">{{ 'отозвана' if row.revoked else 'активна' }}</span>
     </div>
     <div class="meta">@{{ row.channel_username }}{% if row.source_label %} · {{ row.source_label }}{% endif %}</div>
-    <div class="meta">join <span class="num-join">{{ row.joins }}</span> · leave <span class="num-leave">{{ row.leaves }}</span> · сейчас <span class="num-now">{{ row.joins - row.leaves }}</span></div>
+    <div class="meta">join <span class="num-join">{{ row.joins }}</span> · leave <span class="num-leave">{{ row.leaves }}</span> · now <span class="num-now">{{ row.joins - row.leaves }}</span></div>
     <div class="meta" style="word-break:break-all;">{{ row.tg_invite_link }}</div>
     {% if not row.revoked %}
     <div class="actions">
@@ -74,7 +74,7 @@
   {% endfor %}
   <div class="list-item">
     <div class="row"><span class="title">Прямые (без ссылки)</span></div>
-    <div class="meta">join <span class="num-join">{{ direct_joins }}</span> · leave <span class="num-leave">{{ direct_leaves }}</span> · сейчас <span class="num-now">{{ direct_joins - direct_leaves }}</span></div>
+    <div class="meta">join <span class="num-join">{{ direct_joins }}</span> · leave <span class="num-leave">{{ direct_leaves }}</span> · now <span class="num-now">{{ direct_joins - direct_leaves }}</span></div>
   </div>
   {% else %}
   <div class="empty-state">Инвайт-ссылок пока нет.</div>

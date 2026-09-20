@@ -2,7 +2,7 @@
   "name": "News Agent",
   "short_name": "News Agent",
   "description": "Админка News Agent — источники, каналы, статистика",
-  "start_url": "/sources",
+  "start_url": "/",
   "scope": "/",
   "display": "standalone",
   "background_color": "#000000",

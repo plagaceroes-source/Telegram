@@ -62,12 +62,15 @@
   {% for row in invite_stats %}
   <div class="list-item">
     <div class="row">
-      <span class="title">{{ row.name }}</span>
+      <span class="title">{{ row.source_label or row.name }}</span>
       <span class="badge {{ 'off' if row.revoked else 'on' }}">{{ 'отозвана' if row.revoked else 'активна' }}</span>
     </div>
-    <div class="meta">@{{ row.channel_username }}{% if row.source_label %} · {{ row.source_label }}{% endif %}</div>
+    <div class="meta">@{{ row.channel_username }}</div>
     <div class="meta">join <span class="num-join">{{ row.joins }}</span> · leave <span class="num-leave">{{ row.leaves }}</span> · now <span class="num-now">{{ row.joins - row.leaves }}</span></div>
-    <div class="meta" style="word-break:break-all;">{{ row.tg_invite_link }}</div>
+    <div class="link-row">
+      <span class="link-text">{{ row.tg_invite_link }}</span>
+      <button type="button" class="secondary copy-btn" onclick="copyInviteLink(this)" data-link="{{ row.tg_invite_link }}">Копировать</button>
+    </div>
     {% if not row.revoked %}
     <div class="actions">
       <form method="post" action="/invite_links/{{ row.id }}/revoke" onsubmit="return confirm('Отозвать ссылку?')">
@@ -88,6 +91,32 @@
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
 <script>
+  function copyInviteLink(btn) {
+    const link = btn.dataset.link;
+    const done = () => {
+      const original = btn.textContent;
+      btn.textContent = 'Скопировано';
+      setTimeout(() => { btn.textContent = original; }, 1500);
+    };
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(link).then(done).catch(() => fallbackCopy(link, done));
+    } else {
+      fallbackCopy(link, done);
+    }
+  }
+
+  function fallbackCopy(text, done) {
+    const el = document.createElement('textarea');
+    el.value = text;
+    el.style.position = 'fixed';
+    el.style.opacity = '0';
+    document.body.appendChild(el);
+    el.focus();
+    el.select();
+    try { document.execCommand('copy'); done(); } catch (e) {}
+    document.body.removeChild(el);
+  }
+
   function generateInviteName() {
     const prefix = 'bvk_news';
     const now = new Date();

@@ -4,6 +4,19 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>{% block title %}News Agent{% endblock %}</title>
+  <script>
+    // 100vh/100dvh не всегда надёжны в WKWebView для standalone-приложений
+    // ("На главный экран") — берём реальную высоту напрямую из window.innerHeight,
+    // это единственный источник, которому можно доверять в любой версии WebKit.
+    (function () {
+      function setAppHeight() {
+        document.documentElement.style.setProperty('--app-height', window.innerHeight + 'px');
+      }
+      setAppHeight();
+      window.addEventListener('resize', setAppHeight);
+      window.addEventListener('orientationchange', setAppHeight);
+    })();
+  </script>
 
   <!-- PWA: "Добавить на главный экран" -->
   <link rel="manifest" href="/static/manifest.json">
@@ -32,10 +45,9 @@
     * { box-sizing: border-box; }
     html, body { height: 100%; background: var(--bg); overscroll-behavior: none; }
     /* App-shell: body сам никогда не скроллится (и поэтому не "резинится") — вместо
-       этого он занимает ровно высоту экрана и скроллится только .scroll-area внутри.
-       Футер — обычный flex-элемент, а не position:fixed, поэтому WKWebView в
-       standalone-режиме (запуск с "Домой") не может сдвинуть/растянуть его при
-       скролле или инерции — ему просто некуда "плыть". */
+       этого он занимает ровно высоту экрана (--app-height из JS, см. <head>) и
+       скроллится только .scroll-area внутри. Футер — обычный flex-элемент,
+       последний в колонке, а не position:fixed. */
     body {
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
       margin: 0;
@@ -44,7 +56,7 @@
       display: flex;
       flex-direction: column;
       height: 100vh;
-      height: 100dvh;
+      height: var(--app-height, 100vh);
       overflow: hidden;
     }
 
@@ -66,7 +78,6 @@
 
     .scroll-area {
       flex: 1 1 auto; overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain;
-      padding-bottom: 78px;
     }
     main { padding: 18px 16px 32px; max-width: 640px; margin: 0 auto; }
     h1 { font-size: 22px; font-weight: 700; margin: 4px 0 16px; letter-spacing: -0.01em; }
@@ -131,17 +142,15 @@
     .faint { color: var(--faint); }
 
     .bottomnav {
-      /* fixed, а не flex-item: раз body больше не скроллится, это уже не может
-         "плыть" при скролле, зато гарантированно прижато к нижнему краю экрана
-         независимо от точных расчётов высоты (dvh/flex) на конкретном устройстве. */
-      position: fixed; left: 0; right: 0; bottom: 0; z-index: 30;
+      /* Обычный flex-элемент (не position:fixed) — последний child в колонке
+         body, растянутой на реальную высоту экрана через --app-height (JS).
+         position:fixed давал такой же разрыв снизу, что и flex, — то есть дело
+         не в способе позиционирования, а в заниженной высоте вьюпорта самой
+         WKWebView; после фикса высоты не должно "плыть" в любом варианте. */
+      flex: 0 0 auto; z-index: 30;
       display: flex; gap: 4px;
       background: rgba(0,0,0,0.92); backdrop-filter: blur(10px);
       border-top: 1px solid var(--border);
-      /* env(safe-area-inset-bottom) на некоторых устройствах в standalone-режиме
-         возвращает куда больше ожидаемого — вместо того чтобы гадать сколько
-         оставить, убираем его влияние совсем: фиксированный отступ, одинаковый
-         на всех устройствах, вплотную к нижнему краю. */
       padding: 8px 6px;
     }
     .bottomnav a {

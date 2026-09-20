@@ -30,24 +30,26 @@
       --radius-pill: 999px;
     }
     * { box-sizing: border-box; }
-    html, body { height: 100%; background: var(--bg); }
-    html {
-      /* Без этого мобильный Safari при "резиновом" перетягивании страницы
-         за край на миг показывает системную область за пределами документа —
-         белую по умолчанию — из-за чего fixed-футер снизу визуально "прыгает". */
-      overscroll-behavior-y: none;
-    }
+    html, body { height: 100%; background: var(--bg); overscroll-behavior: none; }
+    /* App-shell: body сам никогда не скроллится (и поэтому не "резинится") — вместо
+       этого он занимает ровно высоту экрана и скроллится только .scroll-area внутри.
+       Футер — обычный flex-элемент, а не position:fixed, поэтому WKWebView в
+       standalone-режиме (запуск с "Домой") не может сдвинуть/растянуть его при
+       скролле или инерции — ему просто некуда "плыть". */
     body {
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
       margin: 0;
       color: var(--text);
       -webkit-font-smoothing: antialiased;
-      padding-bottom: calc(78px + env(safe-area-inset-bottom));
-      overscroll-behavior-y: none;
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      height: 100dvh;
+      overflow: hidden;
     }
 
     .topbar {
-      position: sticky; top: 0; z-index: 20;
+      flex: 0 0 auto; z-index: 20;
       display: flex; align-items: center; justify-content: space-between;
       padding: calc(14px + env(safe-area-inset-top)) 18px 14px;
       background: rgba(0,0,0,0.85);
@@ -62,6 +64,7 @@
       border: 1px solid var(--border); color: var(--text); text-decoration: none;
     }
 
+    .scroll-area { flex: 1 1 auto; overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; }
     main { padding: 18px 16px 32px; max-width: 640px; margin: 0 auto; }
     h1 { font-size: 22px; font-weight: 700; margin: 4px 0 16px; letter-spacing: -0.01em; }
     h3 { font-size: 15px; font-weight: 600; margin: 0 0 12px; }
@@ -125,7 +128,7 @@
     .faint { color: var(--faint); }
 
     .bottomnav {
-      position: fixed; left: 0; right: 0; bottom: 0; z-index: 30;
+      flex: 0 0 auto; z-index: 30;
       display: flex; gap: 4px; overflow-x: auto;
       background: rgba(0,0,0,0.92); backdrop-filter: blur(10px);
       border-top: 1px solid var(--border);
@@ -171,9 +174,11 @@
     </a>
   </div>
 
-  <main>
-    {% block content %}{% endblock %}
-  </main>
+  <div class="scroll-area">
+    <main>
+      {% block content %}{% endblock %}
+    </main>
+  </div>
 
   <nav class="bottomnav">
     <a href="/" class="{{ 'active' if active == 'dashboard' }}">

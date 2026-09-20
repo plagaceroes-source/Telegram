@@ -64,7 +64,10 @@
       border: 1px solid var(--border); color: var(--text); text-decoration: none;
     }
 
-    .scroll-area { flex: 1 1 auto; overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; }
+    .scroll-area {
+      flex: 1 1 auto; overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain;
+      padding-bottom: calc(70px + env(safe-area-inset-bottom));
+    }
     main { padding: 18px 16px 32px; max-width: 640px; margin: 0 auto; }
     h1 { font-size: 22px; font-weight: 700; margin: 4px 0 16px; letter-spacing: -0.01em; }
     h3 { font-size: 15px; font-weight: 600; margin: 0 0 12px; }
@@ -128,17 +131,18 @@
     .faint { color: var(--faint); }
 
     .bottomnav {
-      flex: 0 0 auto; z-index: 30;
-      display: flex; gap: 4px; overflow-x: auto;
+      /* fixed, а не flex-item: раз body больше не скроллится, это уже не может
+         "плыть" при скролле, зато гарантированно прижато к нижнему краю экрана
+         независимо от точных расчётов высоты (dvh/flex) на конкретном устройстве. */
+      position: fixed; left: 0; right: 0; bottom: 0; z-index: 30;
+      display: flex; gap: 4px;
       background: rgba(0,0,0,0.92); backdrop-filter: blur(10px);
       border-top: 1px solid var(--border);
       padding: 8px 6px calc(8px + env(safe-area-inset-bottom));
-      scrollbar-width: none;
     }
-    .bottomnav::-webkit-scrollbar { display: none; }
     .bottomnav a {
-      flex: 0 0 auto; display: flex; flex-direction: column; align-items: center; gap: 4px;
-      padding: 6px 12px; text-decoration: none; color: var(--faint); min-width: 62px;
+      flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 4px;
+      padding: 6px 4px; text-decoration: none; color: var(--faint);
     }
     .bottomnav a svg { width: 22px; height: 22px; stroke: currentColor; }
     .bottomnav a span { font-size: 10.5px; font-weight: 500; }

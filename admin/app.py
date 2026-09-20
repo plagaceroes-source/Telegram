@@ -36,9 +36,12 @@ app.mount("/static", StaticFiles(directory=str(Path(__file__).parent / "static")
 async def no_cache(request: Request, call_next):
     # iOS кэширует HTML standalone-приложения ("На главный экран") очень агрессивно
     # и может подолгу игнорировать изменения на сервере без явного запрета кэша.
+    # Статику (/static/*: иконки, manifest) не трогаем — иначе каждый переход между
+    # вкладками заново перекачивает то, что и так не меняется, добавляя задержку.
     response = await call_next(request)
-    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
-    response.headers["Pragma"] = "no-cache"
+    if not request.url.path.startswith("/static/"):
+        response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+        response.headers["Pragma"] = "no-cache"
     return response
 
 
@@ -286,14 +289,21 @@ async def stats_page(request: Request, sort: str = "recent"):
         invite_result = await session.execute(select(InviteLink).options(selectinload(InviteLink.target_channel)))
         invite_links = list(invite_result.scalars())
 
+        # Один сгруппированный запрос вместо двух (join/leave) на каждую ссылку —
+        # раньше это была классическая N+1 проблема (до 19 запросов при 7 ссылках),
+        # заметно замедлявшая именно эту вкладку.
+        counts_result = await session.execute(
+            select(SubscriberEvent.invite_link_id, SubscriberEvent.event_type, func.count())
+            .where(SubscriberEvent.invite_link_id.isnot(None))
+            .group_by(SubscriberEvent.invite_link_id, SubscriberEvent.event_type)
+        )
+        counts_by_link: dict[int, dict[str, int]] = {}
+        for link_id, event_type, cnt in counts_result.all():
+            counts_by_link.setdefault(link_id, {})[event_type] = cnt
+
         invite_stats = []
         for link in invite_links:
-            joins = await session.scalar(
-                select(func.count()).where(SubscriberEvent.invite_link_id == link.id, SubscriberEvent.event_type == "join")
-            )
-            leaves = await session.scalar(
-                select(func.count()).where(SubscriberEvent.invite_link_id == link.id, SubscriberEvent.event_type == "leave")
-            )
+            link_counts = counts_by_link.get(link.id, {})
             invite_stats.append(
                 {
                     "id": link.id,
@@ -301,8 +311,8 @@ async def stats_page(request: Request, sort: str = "recent"):
                     "tg_invite_link": link.tg_invite_link,
                     "channel_username": link.target_channel.username if link.target_channel else "?",
                     "source_label": link.source_label,
-                    "joins": joins or 0,
-                    "leaves": leaves or 0,
+                    "joins": link_counts.get("join", 0),
+                    "leaves": link_counts.get("leave", 0),
                     "revoked": link.revoked,
                 }
             )

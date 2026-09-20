@@ -98,29 +98,49 @@ async def dashboard(request: Request):
     )
 
 
-# --- Источники ------------------------------------------------------------
+# --- Сеть: источники + аккаунты + целевые каналы (одна вкладка футера) ------
 
-@app.get("/sources")
-async def sources_page(request: Request):
+@app.get("/network")
+async def network_page(request: Request, tab: str = "sources"):
     async with session_scope() as session:
-        result = await session.execute(
+        sources_result = await session.execute(
             select(Source).options(selectinload(Source.userbot_account)).order_by(Source.id)
         )
-        sources = list(result.scalars())
+        sources = list(sources_result.scalars())
         accounts_result = await session.execute(
             select(UserbotAccount).options(selectinload(UserbotAccount.sources)).order_by(UserbotAccount.id)
         )
         accounts = list(accounts_result.scalars())
+        targets_result = await session.execute(select(TargetChannel).order_by(TargetChannel.id))
+        targets = list(targets_result.scalars())
+
     return templates.TemplateResponse(
         request,
-        "sources.html",
+        "network.html",
         {
-            "active": "sources",
+            "active": tab if tab in ("sources", "accounts", "targets") else "sources",
+            "active_tab": tab if tab in ("sources", "accounts", "targets") else "sources",
             "sources": sources,
             "accounts": accounts,
+            "targets": targets,
             "max_sources": settings.max_sources_per_account,
         },
     )
+
+
+@app.get("/sources")
+async def sources_page_redirect():
+    return RedirectResponse("/network?tab=sources", status_code=308)
+
+
+@app.get("/accounts")
+async def accounts_page_redirect():
+    return RedirectResponse("/network?tab=accounts", status_code=308)
+
+
+@app.get("/targets")
+async def targets_page_redirect():
+    return RedirectResponse("/network?tab=targets", status_code=308)
 
 
 @app.post("/sources")
@@ -140,7 +160,7 @@ async def create_source(
                 added_by="admin-panel",
             )
         )
-    return RedirectResponse("/sources", status_code=303)
+    return RedirectResponse("/network?tab=sources", status_code=303)
 
 
 @app.post("/sources/{source_id}/toggle")
@@ -149,7 +169,7 @@ async def toggle_source(source_id: int):
         source = await session.get(Source, source_id)
         if source:
             source.active = not source.active
-    return RedirectResponse("/sources", status_code=303)
+    return RedirectResponse("/network?tab=sources", status_code=303)
 
 
 @app.post("/sources/{source_id}/delete")
@@ -158,17 +178,7 @@ async def delete_source(source_id: int):
         source = await session.get(Source, source_id)
         if source:
             await session.delete(source)
-    return RedirectResponse("/sources", status_code=303)
-
-
-# --- Целевые каналы ---------------------------------------------------------
-
-@app.get("/targets")
-async def targets_page(request: Request):
-    async with session_scope() as session:
-        result = await session.execute(select(TargetChannel).order_by(TargetChannel.id))
-        targets = list(result.scalars())
-    return templates.TemplateResponse(request, "targets.html", {"active": "targets", "targets": targets})
+    return RedirectResponse("/network?tab=sources", status_code=303)
 
 
 @app.post("/targets")
@@ -191,7 +201,7 @@ async def create_target(username: str = Form(...), network_tag: str = Form(""), 
         session.add(
             TargetChannel(username=clean_username, network_tag=network_tag, lang=lang, tg_chat_id=tg_chat_id)
         )
-    return RedirectResponse("/targets", status_code=303)
+    return RedirectResponse("/network?tab=targets", status_code=303)
 
 
 @app.post("/targets/{target_id}/toggle")
@@ -200,23 +210,7 @@ async def toggle_target(target_id: int):
         target = await session.get(TargetChannel, target_id)
         if target:
             target.active = not target.active
-    return RedirectResponse("/targets", status_code=303)
-
-
-# --- Аккаунты-слушатели -----------------------------------------------------
-
-@app.get("/accounts")
-async def accounts_page(request: Request):
-    async with session_scope() as session:
-        result = await session.execute(
-            select(UserbotAccount).options(selectinload(UserbotAccount.sources)).order_by(UserbotAccount.id)
-        )
-        accounts = list(result.scalars())
-    return templates.TemplateResponse(
-        request,
-        "accounts.html",
-        {"active": "accounts", "accounts": accounts, "max_sources": settings.max_sources_per_account},
-    )
+    return RedirectResponse("/network?tab=targets", status_code=303)
 
 
 # --- Очередь на утверждение (view-only история) ------------------------------

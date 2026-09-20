@@ -141,6 +141,15 @@
     .bottomnav a span { font-size: 10.5px; font-weight: 500; }
     .bottomnav a.active { color: #fff; }
 
+    .subtabs { display: flex; gap: 6px; margin-bottom: 16px; overflow-x: auto; scrollbar-width: none; }
+    .subtabs::-webkit-scrollbar { display: none; }
+    .subtab-btn {
+      flex: 0 0 auto; padding: 8px 16px; border-radius: var(--radius-pill);
+      border: 1px solid var(--border-strong); background: transparent; color: var(--muted);
+      font-size: 13px; font-weight: 600; cursor: pointer; font-family: inherit;
+    }
+    .subtab-btn.active { background: #fff; color: #000; border-color: #fff; }
+
     .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
     @media (max-width: 480px) { .grid-2 { grid-template-columns: 1fr; } }
 
@@ -171,17 +180,9 @@
       <svg viewBox="0 0 24 24" fill="none" stroke-width="1.8"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg>
       <span>Дашборд</span>
     </a>
-    <a href="/sources" class="{{ 'active' if active == 'sources' }}">
-      <svg viewBox="0 0 24 24" fill="none" stroke-width="1.8"><path d="M4 11a9 9 0 019 9"/><path d="M4 4a16 16 0 0116 16"/><circle cx="5" cy="19" r="1.5" fill="currentColor" stroke="none"/></svg>
-      <span>Источники</span>
-    </a>
-    <a href="/accounts" class="{{ 'active' if active == 'accounts' }}">
-      <svg viewBox="0 0 24 24" fill="none" stroke-width="1.8"><circle cx="12" cy="8" r="3.5"/><path d="M4.5 20a7.5 7.5 0 0115 0"/></svg>
-      <span>Аккаунты</span>
-    </a>
-    <a href="/targets" class="{{ 'active' if active == 'targets' }}">
-      <svg viewBox="0 0 24 24" fill="none" stroke-width="1.8"><path d="M11 5 5 9H2v6h3l6 4V5z"/><path d="M15.5 8.5a5 5 0 010 7"/></svg>
-      <span>Каналы</span>
+    <a href="/network" class="{{ 'active' if active in ('sources', 'accounts', 'targets') }}">
+      <svg viewBox="0 0 24 24" fill="none" stroke-width="1.8"><circle cx="6" cy="6" r="2.5"/><circle cx="18" cy="6" r="2.5"/><circle cx="12" cy="18" r="2.5"/><path d="M8 7l3 9M16 7l-3 9M8.3 5.3h7.4"/></svg>
+      <span>Сеть</span>
     </a>
     <a href="/queue" class="{{ 'active' if active == 'queue' }}">
       <svg viewBox="0 0 24 24" fill="none" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>

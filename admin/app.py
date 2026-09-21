@@ -62,6 +62,51 @@ def _mask(value: str, keep: int = 4) -> str:
 
 PERIOD_DAYS = {"7": 7, "30": 30, "90": 90, "all": None}
 
+POST_SORT_FIELDS = {
+    "views": PostStats.views,
+    "reactions": PostStats.reactions_count,
+    "comments": PostStats.comments_count,
+    "forwards": PostStats.forwards,
+}
+
+
+async def _top_posts(session, posts_period: str, posts_sort: str) -> tuple[list[dict], str, str]:
+    if posts_period not in PERIOD_DAYS:
+        posts_period = "7"
+    if posts_sort not in POST_SORT_FIELDS:
+        posts_sort = "views"
+    posts_days = PERIOD_DAYS[posts_period]
+    posts_since = dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=posts_days) if posts_days else None
+
+    post_q = (
+        select(PublishedPost, PostStats, DraftPost, TargetChannel)
+        .join(DraftPost, PublishedPost.draft_post_id == DraftPost.id)
+        .join(TargetChannel, PublishedPost.target_channel_id == TargetChannel.id)
+        .outerjoin(PostStats, PostStats.published_post_id == PublishedPost.id)
+    )
+    if posts_since is not None:
+        post_q = post_q.where(PublishedPost.published_at >= posts_since)
+    post_q = post_q.order_by(POST_SORT_FIELDS[posts_sort].desc().nullslast()).limit(20)
+    post_rows_raw = (await session.execute(post_q)).all()
+
+    top_posts = []
+    for published, pstats, draft, target in post_rows_raw:
+        text = (draft.translated_text or "").strip()
+        snippet = (text[:140] + "…") if len(text) > 140 else text
+        top_posts.append(
+            {
+                "snippet": snippet or "(без текста)",
+                "channel_username": target.username,
+                "published_at": published.published_at,
+                "link": f"https://t.me/{target.username}/{published.tg_message_id}",
+                "views": pstats.views if pstats else 0,
+                "forwards": pstats.forwards if pstats else 0,
+                "reactions": pstats.reactions_count if pstats else 0,
+                "comments": pstats.comments_count if pstats else 0,
+            }
+        )
+    return top_posts, posts_period, posts_sort
+
 
 def _resolve_period(
     period: str, date_from: str | None, date_to: str | None
@@ -207,7 +252,14 @@ async def _subscriber_flow_series(
 
 
 @app.get("/")
-async def dashboard(request: Request, period: str = "30", date_from: str | None = None, date_to: str | None = None):
+async def dashboard(
+    request: Request,
+    period: str = "30",
+    date_from: str | None = None,
+    date_to: str | None = None,
+    posts_period: str = "7",
+    posts_sort: str = "views",
+):
     period, since, until, date_from, date_to = _resolve_period(period, date_from, date_to)
     granularity = _granularity_for(since, until)
 
@@ -265,6 +317,8 @@ async def dashboard(request: Request, period: str = "30", date_from: str | None 
                 }
             )
 
+        top_posts, posts_period, posts_sort = await _top_posts(session, posts_period, posts_sort)
+
     growth_first = growth_series[0]["total"] if growth_series else None
     growth_last = growth_series[-1]["total"] if growth_series else None
     growth_pct = ((growth_last - growth_first) / growth_first * 100) if growth_first else None
@@ -301,6 +355,9 @@ async def dashboard(request: Request, period: str = "30", date_from: str | None 
             "join_share": join_share,
             "leave_share": leave_share,
             "channel_breakdown": channel_breakdown,
+            "top_posts": top_posts,
+            "posts_period": posts_period,
+            "posts_sort": posts_sort,
         },
     )
 
@@ -453,23 +510,8 @@ async def queue_page(request: Request):
 
 # --- Статистика --------------------------------------------------------------
 
-POST_SORT_FIELDS = {
-    "views": PostStats.views,
-    "reactions": PostStats.reactions_count,
-    "comments": PostStats.comments_count,
-    "forwards": PostStats.forwards,
-}
-
-
 @app.get("/stats")
-async def stats_page(request: Request, sort: str = "recent", posts_period: str = "7", posts_sort: str = "views"):
-    if posts_period not in PERIOD_DAYS:
-        posts_period = "7"
-    if posts_sort not in POST_SORT_FIELDS:
-        posts_sort = "views"
-    posts_days = PERIOD_DAYS[posts_period]
-    posts_since = dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=posts_days) if posts_days else None
-
+async def stats_page(request: Request, sort: str = "recent"):
     async with session_scope() as session:
         channels_result = await session.execute(select(TargetChannel).order_by(TargetChannel.id))
         channels = list(channels_result.scalars())
@@ -533,34 +575,6 @@ async def stats_page(request: Request, sort: str = "recent", posts_period: str =
             select(func.count()).where(SubscriberEvent.is_direct.is_(True), SubscriberEvent.event_type == "leave")
         )
 
-        post_q = (
-            select(PublishedPost, PostStats, DraftPost, TargetChannel)
-            .join(DraftPost, PublishedPost.draft_post_id == DraftPost.id)
-            .join(TargetChannel, PublishedPost.target_channel_id == TargetChannel.id)
-            .outerjoin(PostStats, PostStats.published_post_id == PublishedPost.id)
-        )
-        if posts_since is not None:
-            post_q = post_q.where(PublishedPost.published_at >= posts_since)
-        post_q = post_q.order_by(POST_SORT_FIELDS[posts_sort].desc().nullslast()).limit(20)
-        post_rows_raw = (await session.execute(post_q)).all()
-
-        top_posts = []
-        for published, pstats, draft, target in post_rows_raw:
-            text = (draft.translated_text or "").strip()
-            snippet = (text[:140] + "…") if len(text) > 140 else text
-            top_posts.append(
-                {
-                    "snippet": snippet or "(без текста)",
-                    "channel_username": target.username,
-                    "published_at": published.published_at,
-                    "link": f"https://t.me/{target.username}/{published.tg_message_id}",
-                    "views": pstats.views if pstats else 0,
-                    "forwards": pstats.forwards if pstats else 0,
-                    "reactions": pstats.reactions_count if pstats else 0,
-                    "comments": pstats.comments_count if pstats else 0,
-                }
-            )
-
     if sort == "joins":
         invite_stats.sort(key=lambda r: r["joins"], reverse=True)
     elif sort == "leaves":
@@ -581,9 +595,6 @@ async def stats_page(request: Request, sort: str = "recent", posts_period: str =
             "direct_joins": direct_joins or 0,
             "direct_leaves": direct_leaves or 0,
             "invite_error": request.query_params.get("invite_error"),
-            "top_posts": top_posts,
-            "posts_period": posts_period,
-            "posts_sort": posts_sort,
         },
     )
 

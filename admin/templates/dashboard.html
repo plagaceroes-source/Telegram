@@ -37,7 +37,7 @@
     <a href="/?period=30#subscriber-stats" class="subtab-btn {{ 'active' if period == '30' }}">30 дней</a>
     <a href="/?period=90#subscriber-stats" class="subtab-btn {{ 'active' if period == '90' }}">90 дней</a>
     <a href="/?period=all#subscriber-stats" class="subtab-btn {{ 'active' if period == 'all' }}">Всё время</a>
-    <button type="button" class="subtab-btn {{ 'active' if period == 'custom' }}" onclick="toggleCustomPeriod()">Свой период</button>
+    <button type="button" class="subtab-btn {{ 'active' if period == 'custom' }}" onclick="toggleCustomPeriod()">Период</button>
   </div>
 
   <form method="get" action="/#subscriber-stats" id="custom-period-form" style="display:{{ 'flex' if period == 'custom' else 'none' }}; gap:10px; align-items:flex-end; flex-wrap:wrap; margin-bottom:16px;">

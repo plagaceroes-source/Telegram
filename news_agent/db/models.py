@@ -141,6 +141,24 @@ class PublishedPost(Base):
     target_channel: Mapped[TargetChannel] = relationship()
 
 
+class PostStats(Base):
+    """Актуальные метрики опубликованного поста — просмотры/репосты/реакции/
+    комментарии. Bot API их не отдаёт, собираются через MTProto (Telethon)."""
+
+    __tablename__ = "post_stats"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    published_post_id: Mapped[int] = mapped_column(ForeignKey("published_posts.id"), unique=True)
+    views: Mapped[int] = mapped_column(default=0)
+    forwards: Mapped[int] = mapped_column(default=0)
+    reactions_count: Mapped[int] = mapped_column(default=0)
+    reactions_breakdown: Mapped[dict] = mapped_column(JSON, default=dict)
+    comments_count: Mapped[int] = mapped_column(default=0)
+    updated_at: Mapped[dt.datetime] = mapped_column(**_TZ_NOW)
+
+    published_post: Mapped[PublishedPost] = relationship()
+
+
 # --- stats / attribution (3.x) ------------------------------------------
 
 class InviteLink(Base):

@@ -89,6 +89,41 @@
   {% endif %}
 </div>
 
+<div class="card" id="top-posts">
+  <h3>Топ постов</h3>
+  <p class="muted" style="margin-top:-6px">
+    Просмотры/репосты/реакции/комментарии обновляются в фоне раз в ~15 минут, для новых постов появляются не сразу.
+  </p>
+  <div class="subtabs">
+    <a href="/stats?posts_period=7&posts_sort={{ posts_sort }}#top-posts" class="subtab-btn {{ 'active' if posts_period == '7' }}">7 дней</a>
+    <a href="/stats?posts_period=30&posts_sort={{ posts_sort }}#top-posts" class="subtab-btn {{ 'active' if posts_period == '30' }}">30 дней</a>
+    <a href="/stats?posts_period=90&posts_sort={{ posts_sort }}#top-posts" class="subtab-btn {{ 'active' if posts_period == '90' }}">90 дней</a>
+    <a href="/stats?posts_period=all&posts_sort={{ posts_sort }}#top-posts" class="subtab-btn {{ 'active' if posts_period == 'all' }}">Всё время</a>
+  </div>
+  <div class="subtabs">
+    <a href="/stats?posts_period={{ posts_period }}&posts_sort=views#top-posts" class="subtab-btn {{ 'active' if posts_sort == 'views' }}">Просмотры</a>
+    <a href="/stats?posts_period={{ posts_period }}&posts_sort=reactions#top-posts" class="subtab-btn {{ 'active' if posts_sort == 'reactions' }}">Реакции</a>
+    <a href="/stats?posts_period={{ posts_period }}&posts_sort=comments#top-posts" class="subtab-btn {{ 'active' if posts_sort == 'comments' }}">Комментарии</a>
+    <a href="/stats?posts_period={{ posts_period }}&posts_sort=forwards#top-posts" class="subtab-btn {{ 'active' if posts_sort == 'forwards' }}">Репосты</a>
+  </div>
+
+  {% if top_posts %}
+  {% for p in top_posts %}
+  <div class="list-item">
+    <div class="row"><span class="title">{{ p.snippet }}</span></div>
+    <div class="meta">@{{ p.channel_username }} · {{ p.published_at.strftime("%d.%m.%Y %H:%M") }}</div>
+    <div class="meta">👁 {{ p.views }} · 🔁 {{ p.forwards }} · ❤️ {{ p.reactions }} · 💬 {{ p.comments }}</div>
+    <div class="link-row">
+      <span class="link-text">{{ p.link }}</span>
+      <a class="btn secondary copy-btn" href="{{ p.link }}" target="_blank" rel="noopener">Открыть</a>
+    </div>
+  </div>
+  {% endfor %}
+  {% else %}
+  <div class="empty-state">За выбранный период опубликованных постов нет.</div>
+  {% endif %}
+</div>
+
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
 <script>
   function copyInviteLink(btn) {

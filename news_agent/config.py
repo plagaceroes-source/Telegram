@@ -91,5 +91,11 @@ class Settings:
     # Через сколько секунд удалять предупреждение о force-sub (чтобы не засорять чат).
     force_sub_warning_ttl: int = field(default_factory=lambda: _int("FORCE_SUB_WARNING_TTL", 30))
 
+    # Сбор просмотров/репостов/реакций/комментариев по опубликованным постам —
+    # раз в POST_STATS_POLL_INTERVAL секунд, только для постов не старше
+    # POST_STATS_LOOKBACK_DAYS дней (см. news_agent/stats/post_stats.py).
+    post_stats_poll_interval: int = field(default_factory=lambda: _int("POST_STATS_POLL_INTERVAL", 900))
+    post_stats_lookback_days: int = field(default_factory=lambda: _int("POST_STATS_LOOKBACK_DAYS", 90))
+
 
 settings = Settings()

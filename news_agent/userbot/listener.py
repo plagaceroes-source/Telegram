@@ -11,7 +11,7 @@ import os
 import random
 from pathlib import Path
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from telethon import TelegramClient, events
 from telethon.tl.functions.channels import JoinChannelRequest
 
@@ -21,6 +21,7 @@ from news_agent.db.models import RawPost, Source, UserbotAccount
 from news_agent.db.session import session_scope
 from news_agent.services.language import detect_language
 from news_agent.services.media_relay import upload_and_get_ref
+from news_agent.stats.post_stats import collect_post_stats
 
 logger = logging.getLogger(__name__)
 
@@ -52,8 +53,30 @@ class AccountWorker:
 
         await asyncio.gather(
             self._sync_sources_loop(),
+            self._post_stats_loop(),
             self.client.run_until_disconnected(),
         )
+
+    async def _is_post_stats_owner(self) -> bool:
+        """Сбор статистики постов должен вести только один аккаунт — иначе при
+        нескольких юзерботах одна и та же работа задваивалась бы. Детерминированно
+        избираем аккаунт с наименьшим id среди активных/ограниченных."""
+        async with session_scope() as session:
+            min_id = await session.scalar(
+                select(func.min(UserbotAccount.id)).where(UserbotAccount.status != "disabled")
+            )
+        return min_id == self.account_id
+
+    async def _post_stats_loop(self) -> None:
+        while True:
+            try:
+                if await self._is_post_stats_owner():
+                    updated = await collect_post_stats(self.client, settings.post_stats_lookback_days)
+                    if updated:
+                        logger.info("Аккаунт %s: обновлена статистика %d постов", self.account_id, updated)
+            except Exception:
+                logger.exception("Аккаунт %s: ошибка сбора статистики постов", self.account_id)
+            await asyncio.sleep(settings.post_stats_poll_interval)
 
     async def _sync_sources_loop(self) -> None:
         """Периодически подтягивает список источников из БД и постепенно вступает в новые."""

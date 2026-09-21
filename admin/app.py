@@ -62,10 +62,62 @@ def _mask(value: str, keep: int = 4) -> str:
 PERIOD_DAYS = {"7": 7, "30": 30, "90": 90, "all": None}
 
 
-async def _subscriber_growth_series(session, target_ids: list[int], since: dt.datetime | None) -> list[dict]:
-    """Суммарный ряд «подписчиков по сети» по дням: для каждого канала — последний
-    известный снимок на день (с переносом значения вперёд на дни без снимка),
-    сумма по всем каналам за день."""
+def _resolve_period(
+    period: str, date_from: str | None, date_to: str | None
+) -> tuple[str, dt.datetime | None, dt.datetime, str | None, str | None]:
+    """Разбирает параметры периода в (period, since, until, date_from, date_to).
+    since/until — границы в UTC, until всегда задан и включителен."""
+    now = dt.datetime.now(dt.timezone.utc)
+    if period == "custom" and date_from and date_to:
+        try:
+            since = dt.datetime.strptime(date_from, "%Y-%m-%d").replace(tzinfo=dt.timezone.utc)
+            until = dt.datetime.strptime(date_to, "%Y-%m-%d").replace(
+                hour=23, minute=59, second=59, tzinfo=dt.timezone.utc
+            )
+            if since <= until:
+                return "custom", since, until, date_from, date_to
+        except ValueError:
+            pass
+    if period == "today":
+        since = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        return "today", since, now, None, None
+    if period in PERIOD_DAYS:
+        days = PERIOD_DAYS[period]
+        since = now - dt.timedelta(days=days) if days else None
+        return period, since, now, None, None
+    return "30", now - dt.timedelta(days=30), now, None, None
+
+
+def _granularity_for(since: dt.datetime | None, until: dt.datetime) -> str:
+    """Короткие периоды (сегодня, свой период до 2 дней) — почасовая детализация,
+    иначе — по дням."""
+    if since is None:
+        return "day"
+    return "hour" if (until - since) <= dt.timedelta(days=2) else "day"
+
+
+def _bucket_step(granularity: str) -> dt.timedelta:
+    return dt.timedelta(hours=1) if granularity == "hour" else dt.timedelta(days=1)
+
+
+def _bucket_key(moment: dt.datetime, granularity: str):
+    if granularity == "hour":
+        return moment.replace(minute=0, second=0, microsecond=0)
+    return moment.date()
+
+
+def _bucket_label(key, granularity: str) -> str:
+    if granularity == "hour":
+        return key.strftime("%Y-%m-%d %H:%M")
+    return key.isoformat()
+
+
+async def _subscriber_growth_series(
+    session, target_ids: list[int], since: dt.datetime | None, until: dt.datetime, granularity: str = "day"
+) -> list[dict]:
+    """Суммарный ряд «подписчиков по сети» по бакетам (день/час): для каждого
+    канала — последнее известное значение на бакет (с переносом вперёд на
+    бакеты без снимка), сумма по всем каналам."""
     if not target_ids:
         return []
 
@@ -84,7 +136,9 @@ async def _subscriber_growth_series(session, target_ids: list[int], since: dt.da
             if value is not None:
                 baseline[ch_id] = value
 
-    snaps_q = select(ChannelStatsDaily).where(ChannelStatsDaily.target_channel_id.in_(target_ids))
+    snaps_q = select(ChannelStatsDaily).where(
+        ChannelStatsDaily.target_channel_id.in_(target_ids), ChannelStatsDaily.snapshot_at <= until
+    )
     if since is not None:
         snaps_q = snaps_q.where(ChannelStatsDaily.snapshot_at >= since)
     snaps_q = snaps_q.order_by(ChannelStatsDaily.snapshot_at)
@@ -92,43 +146,45 @@ async def _subscriber_growth_series(session, target_ids: list[int], since: dt.da
     if not snaps and not baseline:
         return []
 
-    by_day: dict[dt.date, dict[int, int]] = defaultdict(dict)
+    by_bucket: dict = defaultdict(dict)
     for s in snaps:
-        by_day[s.snapshot_at.date()][s.target_channel_id] = s.subscriber_count
+        by_bucket[_bucket_key(s.snapshot_at, granularity)][s.target_channel_id] = s.subscriber_count
 
-    days = sorted(by_day.keys())
+    buckets = sorted(by_bucket.keys())
     if since is not None:
-        start_day = since.date()
-        if start_day not in by_day:
-            days = [start_day] + days
+        start_bucket = _bucket_key(since, granularity)
+        if start_bucket not in by_bucket:
+            buckets = [start_bucket] + buckets
     running = dict(baseline)
     series = []
-    for day in days:
-        running.update(by_day.get(day, {}))
+    for bucket in buckets:
+        running.update(by_bucket.get(bucket, {}))
         if running:
-            series.append({"date": day.isoformat(), "total": sum(running.values())})
+            series.append({"date": _bucket_label(bucket, granularity), "total": sum(running.values())})
     return series
 
 
-async def _subscriber_flow_series(session, target_ids: list[int], since: dt.datetime | None) -> tuple[list[dict], int, int]:
-    """Join/leave по дням за период + суммарные join/leave (для % соотношения)."""
+async def _subscriber_flow_series(
+    session, target_ids: list[int], since: dt.datetime | None, until: dt.datetime, granularity: str = "day"
+) -> tuple[list[dict], int, int]:
+    """Join/leave по бакетам (день/час) за период + суммарные join/leave (для % соотношения)."""
     if not target_ids:
         return [], 0, 0
 
     events_q = select(SubscriberEvent.occurred_at, SubscriberEvent.event_type).where(
-        SubscriberEvent.target_channel_id.in_(target_ids)
+        SubscriberEvent.target_channel_id.in_(target_ids), SubscriberEvent.occurred_at <= until
     )
     if since is not None:
         events_q = events_q.where(SubscriberEvent.occurred_at >= since)
     events = (await session.execute(events_q)).all()
 
-    counts: dict[dt.date, dict[str, int]] = defaultdict(lambda: {"join": 0, "leave": 0})
+    counts: dict = defaultdict(lambda: {"join": 0, "leave": 0})
     total_joins = 0
     total_leaves = 0
     for occurred_at, event_type in events:
-        day = occurred_at.date()
+        bucket = _bucket_key(occurred_at, granularity)
         if event_type in ("join", "leave"):
-            counts[day][event_type] += 1
+            counts[bucket][event_type] += 1
             if event_type == "join":
                 total_joins += 1
             else:
@@ -137,23 +193,22 @@ async def _subscriber_flow_series(session, target_ids: list[int], since: dt.date
     if not counts:
         return [], 0, 0
 
-    start_day = since.date() if since is not None else min(counts.keys())
-    end_day = dt.datetime.now(dt.timezone.utc).date()
+    start_bucket = _bucket_key(since, granularity) if since is not None else min(counts.keys())
+    end_bucket = _bucket_key(until, granularity)
+    step = _bucket_step(granularity)
     series = []
-    day = start_day
-    while day <= end_day:
-        row = counts.get(day, {"join": 0, "leave": 0})
-        series.append({"date": day.isoformat(), "joins": row["join"], "leaves": row["leave"]})
-        day += dt.timedelta(days=1)
+    bucket = start_bucket
+    while bucket <= end_bucket:
+        row = counts.get(bucket, {"join": 0, "leave": 0})
+        series.append({"date": _bucket_label(bucket, granularity), "joins": row["join"], "leaves": row["leave"]})
+        bucket += step
     return series, total_joins, total_leaves
 
 
 @app.get("/")
-async def dashboard(request: Request, period: str = "30"):
-    if period not in PERIOD_DAYS:
-        period = "30"
-    days = PERIOD_DAYS[period]
-    since = dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=days) if days else None
+async def dashboard(request: Request, period: str = "30", date_from: str | None = None, date_to: str | None = None):
+    period, since, until, date_from, date_to = _resolve_period(period, date_from, date_to)
+    granularity = _granularity_for(since, until)
 
     async with session_scope() as session:
         accounts_result = await session.execute(
@@ -190,12 +245,14 @@ async def dashboard(request: Request, period: str = "30"):
                 subscribers_total += latest
                 per_channel_latest[t.id] = latest
 
-        growth_series = await _subscriber_growth_series(session, target_ids, since)
-        flow_series, period_joins, period_leaves = await _subscriber_flow_series(session, target_ids, since)
+        growth_series = await _subscriber_growth_series(session, target_ids, since, until, granularity)
+        flow_series, period_joins, period_leaves = await _subscriber_flow_series(
+            session, target_ids, since, until, granularity
+        )
 
         channel_breakdown = []
         for t in targets:
-            ch_growth = await _subscriber_growth_series(session, [t.id], since)
+            ch_growth = await _subscriber_growth_series(session, [t.id], since, until, granularity)
             first = ch_growth[0]["total"] if ch_growth else None
             last = per_channel_latest.get(t.id)
             pct = ((last - first) / first * 100) if first and last is not None else None
@@ -232,6 +289,8 @@ async def dashboard(request: Request, period: str = "30"):
             "targets_count": len(targets),
             "max_sources": settings.max_sources_per_account,
             "period": period,
+            "date_from": date_from,
+            "date_to": date_to,
             "growth_series": growth_series,
             "flow_series": flow_series,
             "growth_pct": growth_pct,

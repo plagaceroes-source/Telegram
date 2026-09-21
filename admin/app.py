@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import datetime as dt
+from collections import defaultdict
 from pathlib import Path
 
 from fastapi import FastAPI, Form, Request
@@ -58,8 +59,102 @@ def _mask(value: str, keep: int = 4) -> str:
     return value[:keep] + "…" + "*" * 4
 
 
+PERIOD_DAYS = {"7": 7, "30": 30, "90": 90, "all": None}
+
+
+async def _subscriber_growth_series(session, target_ids: list[int], since: dt.datetime | None) -> list[dict]:
+    """Суммарный ряд «подписчиков по сети» по дням: для каждого канала — последний
+    известный снимок на день (с переносом значения вперёд на дни без снимка),
+    сумма по всем каналам за день."""
+    if not target_ids:
+        return []
+
+    baseline: dict[int, int] = {}
+    if since is not None:
+        baseline_result = await session.execute(
+            select(ChannelStatsDaily.target_channel_id, func.max(ChannelStatsDaily.snapshot_at))
+            .where(ChannelStatsDaily.target_channel_id.in_(target_ids), ChannelStatsDaily.snapshot_at < since)
+            .group_by(ChannelStatsDaily.target_channel_id)
+        )
+        for ch_id, last_before in baseline_result.all():
+            value = await session.scalar(
+                select(ChannelStatsDaily.subscriber_count)
+                .where(ChannelStatsDaily.target_channel_id == ch_id, ChannelStatsDaily.snapshot_at == last_before)
+            )
+            if value is not None:
+                baseline[ch_id] = value
+
+    snaps_q = select(ChannelStatsDaily).where(ChannelStatsDaily.target_channel_id.in_(target_ids))
+    if since is not None:
+        snaps_q = snaps_q.where(ChannelStatsDaily.snapshot_at >= since)
+    snaps_q = snaps_q.order_by(ChannelStatsDaily.snapshot_at)
+    snaps = list((await session.execute(snaps_q)).scalars())
+    if not snaps and not baseline:
+        return []
+
+    by_day: dict[dt.date, dict[int, int]] = defaultdict(dict)
+    for s in snaps:
+        by_day[s.snapshot_at.date()][s.target_channel_id] = s.subscriber_count
+
+    days = sorted(by_day.keys())
+    if since is not None:
+        start_day = since.date()
+        if start_day not in by_day:
+            days = [start_day] + days
+    running = dict(baseline)
+    series = []
+    for day in days:
+        running.update(by_day.get(day, {}))
+        if running:
+            series.append({"date": day.isoformat(), "total": sum(running.values())})
+    return series
+
+
+async def _subscriber_flow_series(session, target_ids: list[int], since: dt.datetime | None) -> tuple[list[dict], int, int]:
+    """Join/leave по дням за период + суммарные join/leave (для % соотношения)."""
+    if not target_ids:
+        return [], 0, 0
+
+    events_q = select(SubscriberEvent.occurred_at, SubscriberEvent.event_type).where(
+        SubscriberEvent.target_channel_id.in_(target_ids)
+    )
+    if since is not None:
+        events_q = events_q.where(SubscriberEvent.occurred_at >= since)
+    events = (await session.execute(events_q)).all()
+
+    counts: dict[dt.date, dict[str, int]] = defaultdict(lambda: {"join": 0, "leave": 0})
+    total_joins = 0
+    total_leaves = 0
+    for occurred_at, event_type in events:
+        day = occurred_at.date()
+        if event_type in ("join", "leave"):
+            counts[day][event_type] += 1
+            if event_type == "join":
+                total_joins += 1
+            else:
+                total_leaves += 1
+
+    if not counts:
+        return [], 0, 0
+
+    start_day = since.date() if since is not None else min(counts.keys())
+    end_day = dt.datetime.now(dt.timezone.utc).date()
+    series = []
+    day = start_day
+    while day <= end_day:
+        row = counts.get(day, {"join": 0, "leave": 0})
+        series.append({"date": day.isoformat(), "joins": row["join"], "leaves": row["leave"]})
+        day += dt.timedelta(days=1)
+    return series, total_joins, total_leaves
+
+
 @app.get("/")
-async def dashboard(request: Request):
+async def dashboard(request: Request, period: str = "30"):
+    if period not in PERIOD_DAYS:
+        period = "30"
+    days = PERIOD_DAYS[period]
+    since = dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=days) if days else None
+
     async with session_scope() as session:
         accounts_result = await session.execute(
             select(UserbotAccount).options(selectinload(UserbotAccount.sources)).order_by(UserbotAccount.id)
@@ -81,7 +176,9 @@ async def dashboard(request: Request):
 
         targets_result = await session.execute(select(TargetChannel).where(TargetChannel.active.is_(True)))
         targets = list(targets_result.scalars())
+        target_ids = [t.id for t in targets]
         subscribers_total = 0
+        per_channel_latest: dict[int, int] = {}
         for t in targets:
             latest = await session.scalar(
                 select(ChannelStatsDaily.subscriber_count)
@@ -91,6 +188,33 @@ async def dashboard(request: Request):
             )
             if latest:
                 subscribers_total += latest
+                per_channel_latest[t.id] = latest
+
+        growth_series = await _subscriber_growth_series(session, target_ids, since)
+        flow_series, period_joins, period_leaves = await _subscriber_flow_series(session, target_ids, since)
+
+        channel_breakdown = []
+        for t in targets:
+            ch_growth = await _subscriber_growth_series(session, [t.id], since)
+            first = ch_growth[0]["total"] if ch_growth else None
+            last = per_channel_latest.get(t.id)
+            pct = ((last - first) / first * 100) if first and last is not None else None
+            channel_breakdown.append(
+                {
+                    "username": t.username,
+                    "latest_count": last,
+                    "growth_pct": pct,
+                }
+            )
+
+    growth_first = growth_series[0]["total"] if growth_series else None
+    growth_last = growth_series[-1]["total"] if growth_series else None
+    growth_pct = ((growth_last - growth_first) / growth_first * 100) if growth_first else None
+    growth_abs = (growth_last - growth_first) if (growth_first is not None and growth_last is not None) else None
+
+    period_total_events = period_joins + period_leaves
+    join_share = (period_joins / period_total_events * 100) if period_total_events else None
+    leave_share = (period_leaves / period_total_events * 100) if period_total_events else None
 
     return templates.TemplateResponse(
         request,
@@ -107,6 +231,16 @@ async def dashboard(request: Request):
             "subscribers_total": subscribers_total,
             "targets_count": len(targets),
             "max_sources": settings.max_sources_per_account,
+            "period": period,
+            "growth_series": growth_series,
+            "flow_series": flow_series,
+            "growth_pct": growth_pct,
+            "growth_abs": growth_abs,
+            "period_joins": period_joins,
+            "period_leaves": period_leaves,
+            "join_share": join_share,
+            "leave_share": leave_share,
+            "channel_breakdown": channel_breakdown,
         },
     )
 

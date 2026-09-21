@@ -149,6 +149,13 @@
     .num-leave { color: #ff453a; font-weight: 600; }
     .num-now { color: #ffd60a; font-weight: 600; }
 
+    .growth-up, .stat-card .value .unit.growth-up { color: #34c759; }
+    .growth-down, .stat-card .value .unit.growth-down { color: #ff453a; }
+    .growth-flat { color: var(--muted); }
+
+    .legend-dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 5px; }
+    .legend-item { display: inline-flex; align-items: center; margin-right: 14px; font-size: 12.5px; color: var(--muted); }
+
     .bottomnav {
       /* Обычный flex-элемент (не position:fixed) — последний child в колонке
          body, растянутой на реальную высоту экрана через --app-height (JS).

@@ -29,6 +29,79 @@
   </div>
 </div>
 
+<div class="card" id="subscriber-stats">
+  <h3>Подписчики — динамика</h3>
+  <div class="subtabs">
+    <a href="/?period=7#subscriber-stats" class="subtab-btn {{ 'active' if period == '7' }}">7 дней</a>
+    <a href="/?period=30#subscriber-stats" class="subtab-btn {{ 'active' if period == '30' }}">30 дней</a>
+    <a href="/?period=90#subscriber-stats" class="subtab-btn {{ 'active' if period == '90' }}">90 дней</a>
+    <a href="/?period=all#subscriber-stats" class="subtab-btn {{ 'active' if period == 'all' }}">Всё время</a>
+  </div>
+
+  <div class="stat-grid">
+    <div class="stat-card">
+      <div class="label">Прирост за период</div>
+      <div class="value">
+        {% if growth_abs is not none %}
+          {{ "+" if growth_abs >= 0 else "" }}{{ growth_abs }}
+          {% if growth_pct is not none %}
+          <span class="unit {{ 'growth-up' if growth_pct >= 0 else 'growth-down' }}">{{ "+" if growth_pct >= 0 else "" }}{{ "%.1f"|format(growth_pct) }}%</span>
+          {% endif %}
+        {% else %}—{% endif %}
+      </div>
+    </div>
+    <div class="stat-card">
+      <div class="label">Подписались</div>
+      <div class="value num-join">{{ period_joins }}{% if join_share is not none %}<span class="unit">{{ "%.0f"|format(join_share) }}%</span>{% endif %}</div>
+    </div>
+    <div class="stat-card">
+      <div class="label">Отписались</div>
+      <div class="value num-leave">{{ period_leaves }}{% if leave_share is not none %}<span class="unit">{{ "%.0f"|format(leave_share) }}%</span>{% endif %}</div>
+    </div>
+    <div class="stat-card">
+      <div class="label">Чистый прирост подписок</div>
+      <div class="value num-now">{{ "+" if (period_joins - period_leaves) >= 0 else "" }}{{ period_joins - period_leaves }}</div>
+    </div>
+  </div>
+
+  {% if growth_series|length > 1 %}
+  <p class="muted" style="margin-bottom:6px">Рост подписчиков по сети</p>
+  <canvas id="chart-growth" height="110"></canvas>
+  {% endif %}
+
+  {% if flow_series %}
+  <p class="muted" style="margin:16px 0 6px">Подписки / отписки по дням</p>
+  <div style="margin-bottom:6px">
+    <span class="legend-item"><span class="legend-dot" style="background:#34c759"></span>join</span>
+    <span class="legend-item"><span class="legend-dot" style="background:#ff453a"></span>leave</span>
+  </div>
+  <canvas id="chart-flow" height="110"></canvas>
+  {% endif %}
+
+  {% if not growth_series and not flow_series %}
+  <div class="empty-state">За выбранный период данных пока нет.</div>
+  {% endif %}
+
+  {% if channel_breakdown %}
+  <div class="table-wrap" style="margin-top:16px">
+    <table>
+      <tr><th>Канал</th><th>Подписчиков</th><th>Изм. за период</th></tr>
+      {% for row in channel_breakdown %}
+      <tr>
+        <td>@{{ row.username }}</td>
+        <td>{{ row.latest_count if row.latest_count is not none else '—' }}</td>
+        <td>
+          {% if row.growth_pct is not none %}
+          <span class="{{ 'growth-up' if row.growth_pct >= 0 else 'growth-down' }}">{{ "+" if row.growth_pct >= 0 else "" }}{{ "%.1f"|format(row.growth_pct) }}%</span>
+          {% else %}<span class="muted">—</span>{% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </table>
+  </div>
+  {% endif %}
+</div>
+
 <div class="card">
   <h3>Аккаунты-слушатели</h3>
   {% if accounts %}
@@ -53,4 +126,51 @@
   <p class="muted">Аккаунтов пока нет — добавьте через <code>scripts/add_userbot_account.py</code>.</p>
   {% endif %}
 </div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+<script>
+  Chart.defaults.color = '#9a9a9a';
+  Chart.defaults.borderColor = 'rgba(255,255,255,0.12)';
+
+  const growthSeries = {{ growth_series|tojson }};
+  const growthCtx = document.getElementById('chart-growth');
+  if (growthCtx && growthSeries.length > 1) {
+    new Chart(growthCtx, {
+      type: 'line',
+      data: {
+        labels: growthSeries.map(p => p.date),
+        datasets: [{ label: 'Подписчики', data: growthSeries.map(p => p.total), borderColor: '#ffffff', backgroundColor: 'rgba(255,255,255,0.08)', tension: 0.25, fill: true, pointRadius: 0 }],
+      },
+      options: {
+        plugins: { legend: { display: false } },
+        scales: { y: { beginAtZero: false, grid: { color: 'rgba(255,255,255,0.08)' } }, x: { grid: { display: false } } },
+      },
+    });
+  }
+
+  const flowSeries = {{ flow_series|tojson }};
+  const flowCtx = document.getElementById('chart-flow');
+  if (flowCtx && flowSeries.length) {
+    new Chart(flowCtx, {
+      type: 'bar',
+      data: {
+        labels: flowSeries.map(p => p.date),
+        datasets: [
+          { label: 'join', data: flowSeries.map(p => p.joins), backgroundColor: '#34c759' },
+          { label: 'leave', data: flowSeries.map(p => -p.leaves), backgroundColor: '#ff453a' },
+        ],
+      },
+      options: {
+        plugins: {
+          legend: { display: false },
+          tooltip: { callbacks: { label: (ctx) => `${ctx.dataset.label}: ${Math.abs(ctx.raw)}` } },
+        },
+        scales: {
+          y: { grid: { color: 'rgba(255,255,255,0.08)' }, ticks: { callback: (v) => Math.abs(v) } },
+          x: { grid: { display: false } },
+        },
+      },
+    });
+  }
+</script>
 {% endblock %}

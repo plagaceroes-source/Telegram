@@ -21,6 +21,7 @@ from news_agent.bot.session import build_bot
 from news_agent.config import settings
 from news_agent.db.models import DraftPost, RawPost, Source, TargetChannel
 from news_agent.db.session import session_scope
+from news_agent.reports.scheduler import start_reports_scheduler
 from news_agent.services.media_relay import CAPTION_LIMIT, resolve_media
 from news_agent.stats.events import register_membership_handlers
 
@@ -259,8 +260,12 @@ async def run_forever() -> None:
 
     await force_sub.ensure_gated_group_invite_links(bot)
 
+    reports_scheduler = start_reports_scheduler(bot)
+
     polling_task = asyncio.create_task(poll_pending_drafts(bot))
     try:
         await dp.start_polling(bot)
     finally:
         polling_task.cancel()
+        if reports_scheduler is not None:
+            reports_scheduler.shutdown(wait=False)

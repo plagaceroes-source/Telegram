@@ -217,6 +217,20 @@ class ChannelStatsDaily(Base):
     __table_args__ = (Index("ix_channel_stats_daily_channel_time", "target_channel_id", "snapshot_at"),)
 
 
+class ReportLog(Base):
+    """Отметка об уже отправленном ежедневном/месячном отчёте (news_agent/reports/) —
+    защита от повторной отправки при рестарте сервиса рядом со временем отчёта."""
+
+    __tablename__ = "report_logs"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    kind: Mapped[str] = mapped_column(String(16))  # daily / monthly
+    period_key: Mapped[str] = mapped_column(String(16))  # "2026-09-24" / "2026-09"
+    sent_at: Mapped[dt.datetime] = mapped_column(**_TZ_NOW)
+
+    __table_args__ = (UniqueConstraint("kind", "period_key", name="uq_report_logs_kind_period"),)
+
+
 # --- force-sub gating groups ---------------------------------------------
 
 class GatedGroup(Base):

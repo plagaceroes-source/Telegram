@@ -97,5 +97,10 @@ class Settings:
     post_stats_poll_interval: int = field(default_factory=lambda: _int("POST_STATS_POLL_INTERVAL", 900))
     post_stats_lookback_days: int = field(default_factory=lambda: _int("POST_STATS_LOOKBACK_DAYS", 90))
 
+    # Группа для ежедневных/месячных отчётов по статистике (news_agent/reports/).
+    # Пока не задана — отчёты не запускаются (бот стартует как обычно).
+    reports_chat_id: int | None = field(default_factory=lambda: _int("REPORTS_CHAT_ID", 0) or None)
+    reports_timezone: str = field(default_factory=lambda: os.getenv("REPORTS_TIMEZONE", "Europe/Madrid"))
+
 
 settings = Settings()

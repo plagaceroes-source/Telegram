@@ -5,12 +5,14 @@ import datetime as dt
 import logging
 
 from aiogram import Bot
+from aiogram.types import BufferedInputFile
 
 from news_agent.config import settings
 from news_agent.db.session import session_scope
 from news_agent.reports import data
 from news_agent.reports.format import chunk_message, fmt_num, fmt_pct
-from news_agent.reports.period import month_bounds_utc, previous_month
+from news_agent.reports.pdf import render_monthly_pdf
+from news_agent.reports.period import REPORT_TZ, month_bounds_utc, previous_month
 
 logger = logging.getLogger(__name__)
 
@@ -41,7 +43,7 @@ async def _month_metrics(session, target_ids: list[int], year: int, month: int) 
     }
 
 
-async def build_monthly_report(session, year: int, month: int) -> list[str]:
+async def _gather_monthly_data(session, year: int, month: int) -> dict:
     target_ids = await data.active_target_ids(session)
     cur = await _month_metrics(session, target_ids, year, month)
     prev_year, prev_month = previous_month(year, month)
@@ -50,12 +52,23 @@ async def build_monthly_report(session, year: int, month: int) -> list[str]:
     since, until = month_bounds_utc(year, month)
     top_posts = await data.posts_with_stats(session, target_ids, since, until)
 
+    return {
+        "cur": cur,
+        "prev": prev,
+        "prev_year": prev_year,
+        "prev_month": prev_month,
+        "top_posts": top_posts[:TOP_POSTS_LIMIT],
+    }
+
+
+def _render_monthly_text(year: int, month: int, g: dict) -> list[str]:
+    cur, prev = g["cur"], g["prev"]
     month_name = MONTH_NAMES_RU[month]
-    prev_month_name = MONTH_NAMES_RU[prev_month]
+    prev_month_name = MONTH_NAMES_RU[g["prev_month"]]
 
     lines = [
         f"🗓 Месячный отчёт — {month_name} {year}",
-        f"Сравнение с {prev_month_name} {prev_year}",
+        f"Сравнение с {prev_month_name} {g['prev_year']}",
         "",
         f"Опубликовано постов: {fmt_num(cur['posts_count'])} "
         f"({fmt_pct(cur['posts_count'], prev['posts_count'])})",
@@ -86,8 +99,8 @@ async def build_monthly_report(session, year: int, month: int) -> list[str]:
 
     lines.append("")
     lines.append(f"Топ-{TOP_POSTS_LIMIT} постов месяца по просмотрам:")
-    if top_posts:
-        for p in top_posts[:TOP_POSTS_LIMIT]:
+    if g["top_posts"]:
+        for p in g["top_posts"]:
             lines.append(
                 f"• {p['published_at']:%d.%m} @{p['channel_username']} — "
                 f"👁 {fmt_num(p['views'])} · 🔁 {fmt_num(p['forwards'])} · "
@@ -99,11 +112,28 @@ async def build_monthly_report(session, year: int, month: int) -> list[str]:
     return chunk_message(lines)
 
 
+async def build_monthly_report(session, year: int, month: int) -> list[str]:
+    g = await _gather_monthly_data(session, year, month)
+    return _render_monthly_text(year, month, g)
+
+
 async def send_monthly_report(bot: Bot, year: int, month: int) -> None:
     if not settings.reports_chat_id:
         return
     async with session_scope() as session:
-        messages = await build_monthly_report(session, year, month)
-    for text in messages:
+        g = await _gather_monthly_data(session, year, month)
+
+    for text in _render_monthly_text(year, month, g):
         await bot.send_message(settings.reports_chat_id, text)
+
+    month_name = MONTH_NAMES_RU[month]
+    prev_month_name = MONTH_NAMES_RU[g["prev_month"]]
+    pdf_bytes = render_monthly_pdf(
+        year, month, month_name, prev_month_name, g["prev_year"], g["cur"], g["prev"], g["top_posts"], REPORT_TZ
+    )
+    await bot.send_document(
+        settings.reports_chat_id,
+        BufferedInputFile(pdf_bytes, filename=f"report_{year:04d}-{month:02d}.pdf"),
+        caption=f"PDF-версия месячного отчёта за {month_name} {year} с таблицами и диаграммами",
+    )
     logger.info("Месячный отчёт за %04d-%02d отправлен", year, month)

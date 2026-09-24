@@ -47,7 +47,13 @@ async def cmd_help(message: Message) -> None:
         "/list_gated_groups — список групп с force-sub\n"
         "/pause_gated_group <id> / /resume_gated_group <id>\n"
         "/rename_gated_group <id> <название> — переименовать группу\n"
+        "/chatid — узнать chat_id текущего чата (например, для REPORTS_CHAT_ID)\n"
     )
+
+
+@router.message(Command("chatid"))
+async def cmd_chatid(message: Message) -> None:
+    await message.reply(f"chat_id этого чата: `{message.chat.id}`", parse_mode="Markdown")
 
 
 @router.message(Command("add_source"))

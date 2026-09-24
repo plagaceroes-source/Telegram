@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import datetime as dt
 import io
+import re
 
 import matplotlib
 
@@ -18,6 +19,24 @@ from news_agent.reports.format import fmt_num, fmt_pct  # noqa: E402
 
 PAGE_SIZE = (8.27, 11.69)  # A4 в дюймах
 POSTS_PER_PAGE = 28
+
+# Шрифт matplotlib (DejaVu Sans) не знает эмодзи — в тексте постов они попадаются
+# часто (это реальный контент канала), поэтому для PDF-таблиц их вырезаем, чтобы
+# не рисовались "пустые" квадраты вместо символа.
+_EMOJI_RE = re.compile(
+    "["
+    "\U0001F300-\U0001FAFF"
+    "\U00002600-\U000027BF"
+    "\U0001F1E6-\U0001F1FF"
+    "\U00002190-\U000021FF"
+    "\U00002B00-\U00002BFF"
+    "\U0000FE0F"
+    "]+"
+)
+
+
+def _strip_emoji(text: str) -> str:
+    return _EMOJI_RE.sub("", text).strip()
 
 COLOR_JOIN = "#34a853"
 COLOR_LEAVE = "#ea4335"
@@ -48,7 +67,7 @@ def _sources_chart_page(title: str, joins_by_source: dict[str, int]) -> plt.Figu
     if not joins_by_source:
         return None
     items = sorted(joins_by_source.items(), key=lambda kv: kv[1])[-20:]
-    labels = [label for label, _ in items]
+    labels = [_strip_emoji(label) or label for label, _ in items]
     values = [count for _, count in items]
 
     fig = plt.figure(figsize=PAGE_SIZE)
@@ -72,7 +91,7 @@ def _posts_table_pages(title: str, posts: list[dict], tz, show_date: bool) -> li
     for p in posts:
         when = p["published_at"].astimezone(tz)
         when_str = when.strftime("%d.%m %H:%M") if show_date else when.strftime("%H:%M")
-        snippet = p["snippet"]
+        snippet = _strip_emoji(p["snippet"])
         if len(snippet) > max_snippet:
             snippet = snippet[:max_snippet].rstrip() + "…"
         rows.append([when_str, str(p["views"]), str(p["forwards"]), str(p["reactions"]), str(p["comments"]), snippet])

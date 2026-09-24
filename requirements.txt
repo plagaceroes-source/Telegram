@@ -4,6 +4,7 @@ certifi
 anthropic>=0.34
 google-genai>=0.3
 SQLAlchemy>=2.0
+greenlet>=3.0
 aiosqlite>=0.20
 asyncpg>=0.29
 python-dotenv>=1.0

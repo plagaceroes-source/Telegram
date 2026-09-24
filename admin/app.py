@@ -70,22 +70,28 @@ POST_SORT_FIELDS = {
 }
 
 
-async def _top_posts(session, posts_period: str, posts_sort: str) -> tuple[list[dict], str, str]:
-    if posts_period not in PERIOD_DAYS:
-        posts_period = "7"
+async def _top_posts(
+    session,
+    posts_period: str,
+    posts_sort: str,
+    posts_date_from: str | None = None,
+    posts_date_to: str | None = None,
+) -> tuple[list[dict], str, str, str | None, str | None]:
     if posts_sort not in POST_SORT_FIELDS:
         posts_sort = "views"
-    posts_days = PERIOD_DAYS[posts_period]
-    posts_since = dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=posts_days) if posts_days else None
+    posts_period, since, until, posts_date_from, posts_date_to = _resolve_period(
+        posts_period, posts_date_from, posts_date_to
+    )
 
     post_q = (
         select(PublishedPost, PostStats, DraftPost, TargetChannel)
         .join(DraftPost, PublishedPost.draft_post_id == DraftPost.id)
         .join(TargetChannel, PublishedPost.target_channel_id == TargetChannel.id)
         .outerjoin(PostStats, PostStats.published_post_id == PublishedPost.id)
+        .where(PublishedPost.published_at <= until)
     )
-    if posts_since is not None:
-        post_q = post_q.where(PublishedPost.published_at >= posts_since)
+    if since is not None:
+        post_q = post_q.where(PublishedPost.published_at >= since)
     post_q = post_q.order_by(POST_SORT_FIELDS[posts_sort].desc().nullslast()).limit(20)
     post_rows_raw = (await session.execute(post_q)).all()
 
@@ -105,7 +111,7 @@ async def _top_posts(session, posts_period: str, posts_sort: str) -> tuple[list[
                 "comments": pstats.comments_count if pstats else 0,
             }
         )
-    return top_posts, posts_period, posts_sort
+    return top_posts, posts_period, posts_sort, posts_date_from, posts_date_to
 
 
 def _resolve_period(
@@ -259,6 +265,8 @@ async def dashboard(
     date_to: str | None = None,
     posts_period: str = "7",
     posts_sort: str = "views",
+    posts_date_from: str | None = None,
+    posts_date_to: str | None = None,
 ):
     period, since, until, date_from, date_to = _resolve_period(period, date_from, date_to)
     granularity = _granularity_for(since, until)
@@ -317,7 +325,9 @@ async def dashboard(
                 }
             )
 
-        top_posts, posts_period, posts_sort = await _top_posts(session, posts_period, posts_sort)
+        top_posts, posts_period, posts_sort, posts_date_from, posts_date_to = await _top_posts(
+            session, posts_period, posts_sort, posts_date_from, posts_date_to
+        )
 
     growth_first = growth_series[0]["total"] if growth_series else None
     growth_last = growth_series[-1]["total"] if growth_series else None
@@ -358,6 +368,8 @@ async def dashboard(
             "top_posts": top_posts,
             "posts_period": posts_period,
             "posts_sort": posts_sort,
+            "posts_date_from": posts_date_from,
+            "posts_date_to": posts_date_to,
         },
     )
 

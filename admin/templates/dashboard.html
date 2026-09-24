@@ -123,16 +123,33 @@
     Просмотры/репосты/реакции/комментарии обновляются в фоне раз в ~15 минут, для новых постов появляются не сразу.
   </p>
   <div class="subtabs">
+    <a href="/?posts_period=today&posts_sort={{ posts_sort }}#top-posts" class="subtab-btn {{ 'active' if posts_period == 'today' }}">Сегодня</a>
     <a href="/?posts_period=7&posts_sort={{ posts_sort }}#top-posts" class="subtab-btn {{ 'active' if posts_period == '7' }}">7 дней</a>
     <a href="/?posts_period=30&posts_sort={{ posts_sort }}#top-posts" class="subtab-btn {{ 'active' if posts_period == '30' }}">30 дней</a>
     <a href="/?posts_period=90&posts_sort={{ posts_sort }}#top-posts" class="subtab-btn {{ 'active' if posts_period == '90' }}">90 дней</a>
     <a href="/?posts_period=all&posts_sort={{ posts_sort }}#top-posts" class="subtab-btn {{ 'active' if posts_period == 'all' }}">Всё время</a>
+    <button type="button" class="subtab-btn {{ 'active' if posts_period == 'custom' }}" onclick="togglePostsCustomPeriod()">Период</button>
   </div>
+
+  <form method="get" action="/#top-posts" id="posts-custom-period-form" style="display:{{ 'flex' if posts_period == 'custom' else 'none' }}; gap:10px; align-items:flex-end; flex-wrap:wrap; margin-bottom:16px;">
+    <input type="hidden" name="posts_period" value="custom">
+    <input type="hidden" name="posts_sort" value="{{ posts_sort }}">
+    <div style="min-width:140px;">
+      <label style="font-size:11.5px; margin-bottom:4px;">С какой даты</label>
+      <input type="date" name="posts_date_from" value="{{ posts_date_from or '' }}" required>
+    </div>
+    <div style="min-width:140px;">
+      <label style="font-size:11.5px; margin-bottom:4px;">По какую</label>
+      <input type="date" name="posts_date_to" value="{{ posts_date_to or '' }}" required>
+    </div>
+    <button type="submit">Показать</button>
+  </form>
+
   <div class="subtabs">
-    <a href="/?posts_period={{ posts_period }}&posts_sort=views#top-posts" class="subtab-btn {{ 'active' if posts_sort == 'views' }}">Просмотры</a>
-    <a href="/?posts_period={{ posts_period }}&posts_sort=reactions#top-posts" class="subtab-btn {{ 'active' if posts_sort == 'reactions' }}">Реакции</a>
-    <a href="/?posts_period={{ posts_period }}&posts_sort=comments#top-posts" class="subtab-btn {{ 'active' if posts_sort == 'comments' }}">Комментарии</a>
-    <a href="/?posts_period={{ posts_period }}&posts_sort=forwards#top-posts" class="subtab-btn {{ 'active' if posts_sort == 'forwards' }}">Репосты</a>
+    <a href="/?posts_period={{ posts_period }}&posts_sort=views&posts_date_from={{ posts_date_from or '' }}&posts_date_to={{ posts_date_to or '' }}#top-posts" class="subtab-btn {{ 'active' if posts_sort == 'views' }}">Просмотры</a>
+    <a href="/?posts_period={{ posts_period }}&posts_sort=reactions&posts_date_from={{ posts_date_from or '' }}&posts_date_to={{ posts_date_to or '' }}#top-posts" class="subtab-btn {{ 'active' if posts_sort == 'reactions' }}">Реакции</a>
+    <a href="/?posts_period={{ posts_period }}&posts_sort=comments&posts_date_from={{ posts_date_from or '' }}&posts_date_to={{ posts_date_to or '' }}#top-posts" class="subtab-btn {{ 'active' if posts_sort == 'comments' }}">Комментарии</a>
+    <a href="/?posts_period={{ posts_period }}&posts_sort=forwards&posts_date_from={{ posts_date_from or '' }}&posts_date_to={{ posts_date_to or '' }}#top-posts" class="subtab-btn {{ 'active' if posts_sort == 'forwards' }}">Репосты</a>
   </div>
 
   {% if top_posts %}
@@ -181,6 +198,11 @@
 <script>
   function toggleCustomPeriod() {
     const form = document.getElementById('custom-period-form');
+    form.style.display = form.style.display === 'none' ? 'flex' : 'none';
+  }
+
+  function togglePostsCustomPeriod() {
+    const form = document.getElementById('posts-custom-period-form');
     form.style.display = form.style.display === 'none' ? 'flex' : 'none';
   }
 

@@ -53,7 +53,10 @@ async def cmd_help(message: Message) -> None:
 
 @router.message(Command("chatid"))
 async def cmd_chatid(message: Message) -> None:
-    await message.reply(f"chat_id этого чата: `{message.chat.id}`", parse_mode="Markdown")
+    # Без parse_mode: слово "chat_id" само по себе содержит "_", а Telegram
+    # в старом Markdown-режиме трактует одиночное подчёркивание как начало
+    # курсива и падает с "can't find end of the entity", если не находит пару.
+    await message.reply(f"chat_id этого чата: {message.chat.id}")
 
 
 @router.message(Command("add_source"))

@@ -43,8 +43,15 @@ COLOR_LEAVE = "#ea4335"
 COLOR_NEUTRAL = "#4285f4"
 COLOR_HEADER_BG = "#f1f3f4"
 
+_RECONCILIATION_NOTE = (
+    "«Прирост» — это разница реального числа подписчиков в Telegram (точная величина).\n"
+    "«Подписалось/отписалось» — по событиям, которые прислал Telegram: он не гарантирует\n"
+    "уведомление о каждой подписке/отписке в канале, поэтому сумма событий может быть\n"
+    "меньше реального прироста — это ограничение платформы, не ошибка подсчёта."
+)
 
-def _table_page(title: str, rows: list[tuple[str, str]]) -> plt.Figure:
+
+def _table_page(title: str, rows: list[tuple[str, str]], footnote: str | None = None) -> plt.Figure:
     fig = plt.figure(figsize=PAGE_SIZE)
     fig.suptitle(title, fontsize=15, fontweight="bold", y=0.97)
     ax = fig.add_axes((0.06, 0.06, 0.88, 0.85))
@@ -60,6 +67,8 @@ def _table_page(title: str, rows: list[tuple[str, str]]) -> plt.Figure:
             cell.set_facecolor(COLOR_HEADER_BG)
         elif r % 2 == 0:
             cell.set_facecolor("#fafafa")
+    if footnote:
+        fig.text(0.06, 0.04, footnote, fontsize=8, color="#666666", wrap=True, va="bottom")
     return fig
 
 
@@ -172,17 +181,27 @@ def _save_pdf(figures: list[plt.Figure]) -> bytes:
 
 def render_daily_pdf(day: dt.date, d: dict, tz) -> bytes:
     delta = d["end_subs"] - d["start_subs"]
+    net_events = d["joins"] - d["leaves"]
+    unaccounted = delta - net_events
     summary_rows = [
         ("Показатель", "Значение"),
         ("Опубликовано постов", fmt_num(d["posts_count"])),
         ("Подписчиков (стало)", fmt_num(d["end_subs"])),
         ("Подписчиков (было)", fmt_num(d["start_subs"])),
         ("Прирост за день", ("+" if delta >= 0 else "−") + fmt_num(abs(delta))),
-        ("Подписалось", fmt_num(d["joins"])),
-        ("Отписалось", fmt_num(d["leaves"])),
+        ("Подписалось (учтено)", fmt_num(d["joins"])),
+        ("Отписалось (учтено)", fmt_num(d["leaves"])),
     ]
+    if unaccounted != 0:
+        summary_rows.append(("Не учтено Telegram-событиями", ("+" if unaccounted >= 0 else "−") + fmt_num(abs(unaccounted))))
 
-    figures = [_table_page(f"Отчёт за {day:%d.%m.%Y} — сводка", summary_rows)]
+    figures = [
+        _table_page(
+            f"Отчёт за {day:%d.%m.%Y} — сводка",
+            summary_rows,
+            footnote=_RECONCILIATION_NOTE if unaccounted != 0 else None,
+        )
+    ]
 
     sources_page = _sources_chart_page(f"Источники подписок — {day:%d.%m.%Y}", d["joins_by_source"])
     if sources_page:
@@ -202,15 +221,24 @@ def render_monthly_pdf(
         ("Подписчиков на конец месяца", fmt_num(cur["end_subs"])),
         ("Подписчиков на начало месяца", fmt_num(cur["start_subs"])),
         ("Прирост за месяц", ("+" if cur["growth"] >= 0 else "−") + fmt_num(abs(cur["growth"]))),
-        ("Подписалось", f"{fmt_num(cur['joins'])} ({fmt_pct(cur['joins'], prev['joins'])})"),
-        ("Отписалось", f"{fmt_num(cur['leaves'])} ({fmt_pct(cur['leaves'], prev['leaves'])})"),
+        ("Подписалось (учтено)", f"{fmt_num(cur['joins'])} ({fmt_pct(cur['joins'], prev['joins'])})"),
+        ("Отписалось (учтено)", f"{fmt_num(cur['leaves'])} ({fmt_pct(cur['leaves'], prev['leaves'])})"),
         ("Просмотры (сумма)", f"{fmt_num(cur['totals']['views'])} ({fmt_pct(cur['totals']['views'], prev['totals']['views'])})"),
         ("Репосты (сумма)", f"{fmt_num(cur['totals']['forwards'])} ({fmt_pct(cur['totals']['forwards'], prev['totals']['forwards'])})"),
         ("Реакции (сумма)", f"{fmt_num(cur['totals']['reactions'])} ({fmt_pct(cur['totals']['reactions'], prev['totals']['reactions'])})"),
         ("Комментарии (сумма)", f"{fmt_num(cur['totals']['comments'])} ({fmt_pct(cur['totals']['comments'], prev['totals']['comments'])})"),
     ]
+    unaccounted = cur["growth"] - (cur["joins"] - cur["leaves"])
+    if unaccounted != 0:
+        summary_rows.append(("Не учтено Telegram-событиями", ("+" if unaccounted >= 0 else "−") + fmt_num(abs(unaccounted))))
 
-    figures = [_table_page(f"Месячный отчёт — {month_name} {year}", summary_rows)]
+    figures = [
+        _table_page(
+            f"Месячный отчёт — {month_name} {year}",
+            summary_rows,
+            footnote=_RECONCILIATION_NOTE if unaccounted != 0 else None,
+        )
+    ]
     figures.append(
         _comparison_chart_page(
             f"{month_name} {year} vs {prev_month_name} {prev_year}",

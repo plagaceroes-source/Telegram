@@ -152,6 +152,13 @@ async def collect_post_forwards(client: TelegramClient, lookback_days: int = 30)
                 logger.warning("Канал %s: ошибка сбора репостов поста %s: %s", target.username, post.tg_message_id, e)
             await asyncio.sleep(PAUSE_BETWEEN_CALLS)
 
+        logger.info(
+            "Канал %s: репосты проверены у %d из %d постов с ненулевым счётчиком, найдено публичных репостов: %d",
+            target.username,
+            len(collected),
+            len(posts),
+            sum(len(v) for v in collected.values()),
+        )
         if not collected:
             continue
 

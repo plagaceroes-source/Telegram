@@ -35,12 +35,35 @@ def _chat_info(chat) -> tuple[str, str, str]:
     return title, username, "group" if is_group else "channel"
 
 
-async def _fetch_post_forwards(client: TelegramClient, entity, msg_id: int, own_chat_id: int) -> list[dict]:
+async def _stats_call(client: TelegramClient, request, stats_state: dict):
+    """Статистика канала живёт на отдельном дата-центре: Telegram отвечает StatsMigrateError(dc).
+    Telethon эту ошибку сам не обрабатывает, поэтому переадресуем запрос на нужный DC через
+    выделенный отправитель (как Telethon делает при скачивании файлов с чужого DC)."""
+    dc = stats_state.get("dc")
+    if dc is None:
+        try:
+            return await client(request)
+        except errors.StatsMigrateError as e:
+            dc = stats_state["dc"] = e.dc
+    sender = await client._borrow_exported_sender(dc)
+    try:
+        return await client._call(sender, request)
+    finally:
+        await client._return_exported_sender(sender)
+
+
+async def _fetch_post_forwards(
+    client: TelegramClient, entity, msg_id: int, own_chat_id: int, stats_state: dict
+) -> list[dict]:
     """Все публичные репосты одного поста (с пагинацией). Ошибки прав/лимитов пробрасываются."""
     found: list[dict] = []
     offset = ""
     for _ in range(MAX_PAGES):
-        res = await client(GetMessagePublicForwardsRequest(channel=entity, msg_id=msg_id, offset=offset, limit=PAGE_LIMIT))
+        res = await _stats_call(
+            client,
+            GetMessagePublicForwardsRequest(channel=entity, msg_id=msg_id, offset=offset, limit=PAGE_LIMIT),
+            stats_state,
+        )
         chats_by_id = {c.id: c for c in res.chats}
         for fw in res.forwards:
             if not isinstance(fw, PublicForwardMessage):
@@ -109,9 +132,12 @@ async def collect_post_forwards(client: TelegramClient, lookback_days: int = 30)
         own_chat_id = utils.get_peer_id(entity)
 
         collected: dict[int, list[dict]] = {}
+        stats_state: dict = {}
         for post in posts:
             try:
-                collected[post.id] = await _fetch_post_forwards(client, entity, post.tg_message_id, own_chat_id)
+                collected[post.id] = await _fetch_post_forwards(
+                    client, entity, post.tg_message_id, own_chat_id, stats_state
+                )
             except errors.ChatAdminRequiredError:
                 logger.warning(
                     "Канал %s: CHAT_ADMIN_REQUIRED — чтобы видеть репосты, аккаунт юзербота должен быть "
@@ -122,8 +148,8 @@ async def collect_post_forwards(client: TelegramClient, lookback_days: int = 30)
             except errors.FloodWaitError as e:
                 logger.warning("Канал %s: FloodWait %sс при сборе репостов, прерываю цикл", target.username, e.seconds)
                 break
-            except errors.RPCError:
-                logger.exception("Канал %s: ошибка сбора репостов поста %s", target.username, post.tg_message_id)
+            except errors.RPCError as e:
+                logger.warning("Канал %s: ошибка сбора репостов поста %s: %s", target.username, post.tg_message_id, e)
             await asyncio.sleep(PAUSE_BETWEEN_CALLS)
 
         if not collected:

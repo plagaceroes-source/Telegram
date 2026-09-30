@@ -20,6 +20,8 @@ from aiogram.types import (
     ForceReply,
     InlineKeyboardButton,
     InlineKeyboardMarkup,
+    InputMediaPhoto,
+    InputMediaVideo,
     Message,
     User,
 )
@@ -219,7 +221,9 @@ async def _build_keyboard(draft_id: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
-async def send_card(bot: Bot, draft_id: int) -> None:
+async def send_card(bot: Bot, draft_id: int, include_album: bool = True) -> None:
+    """include_album=False — при повторной карточке после правки текста: альбом из нескольких
+    файлов уже висит в чате, второй раз его слать не нужно."""
     async with session_scope() as session:
         draft = await session.get(DraftPost, draft_id)
         submission = (
@@ -236,28 +240,44 @@ async def send_card(bot: Bot, draft_id: int) -> None:
     keyboard = await _build_keyboard(draft_id)
     for chat_id in _review_chats():
         try:
-            await _send_card_to(bot, chat_id, caption, keyboard, media_refs)
+            await _send_card_to(bot, chat_id, caption, keyboard, media_refs, include_album)
         except Exception:
             logger.exception("Не удалось отправить карточку предложки %s в чат %s", draft_id, chat_id)
 
 
+def _input_media(ref: str) -> InputMediaPhoto | InputMediaVideo:
+    media_type, source = resolve_media(ref)
+    return InputMediaVideo(media=source) if media_type == "video" else InputMediaPhoto(media=source)
+
+
 async def _send_card_to(
-    bot: Bot, chat_id: int, caption: str, keyboard: InlineKeyboardMarkup, media_refs: list[str]
+    bot: Bot,
+    chat_id: int,
+    caption: str,
+    keyboard: InlineKeyboardMarkup,
+    media_refs: list[str],
+    include_album: bool = True,
 ) -> None:
     if not media_refs:
         await bot.send_message(chat_id=chat_id, text=caption[:TEXT_LIMIT], reply_markup=keyboard)
         return
 
+    if len(media_refs) > 1:
+        # У альбома не бывает кнопок — шлём все файлы альбомом, а текст с кнопками следом.
+        if include_album:
+            await bot.send_media_group(chat_id=chat_id, media=[_input_media(ref) for ref in media_refs])
+        await bot.send_message(chat_id=chat_id, text=caption[:TEXT_LIMIT], reply_markup=keyboard)
+        return
+
     media_type, source = resolve_media(media_refs[0])
-    full_caption = caption if len(media_refs) == 1 else caption + f"\n\n(+{len(media_refs) - 1} медиафайлов)"
     send = bot.send_video if media_type == "video" else bot.send_photo
     media_arg = {"video" if media_type == "video" else "photo": source}
-    if len(full_caption) > CAPTION_LIMIT:
+    if len(caption) > CAPTION_LIMIT:
         # Подпись к медиа ограничена 1024 символами — шлём медиа без неё, текст с кнопками следом.
         await send(chat_id=chat_id, **media_arg)
-        await bot.send_message(chat_id=chat_id, text=full_caption[:TEXT_LIMIT], reply_markup=keyboard)
+        await bot.send_message(chat_id=chat_id, text=caption[:TEXT_LIMIT], reply_markup=keyboard)
     else:
-        await send(chat_id=chat_id, caption=full_caption, reply_markup=keyboard, **media_arg)
+        await send(chat_id=chat_id, caption=caption, reply_markup=keyboard, **media_arg)
 
 
 # ---------------------------------------------------------------- разбор редактором
@@ -365,7 +385,7 @@ async def _apply_edit(message: Message, bot: Bot, draft_id: int, card_chat_id: i
     except Exception:
         logger.warning("Не удалось удалить старую карточку %s", card_message_id)
     await message.reply(f"Новость #{draft_id} обновлена, присылаю новую карточку.")
-    await send_card(bot, draft_id)
+    await send_card(bot, draft_id, include_album=False)
 
 
 async def _send_to_author(message: Message, bot: Bot, draft_id: int) -> None:

@@ -18,6 +18,7 @@ from news_agent.db.models import (
     ChannelStatsDaily,
     DraftPost,
     InviteLink,
+    PostForward,
     PostStats,
     PublishedPost,
     RawPost,
@@ -112,6 +113,63 @@ async def _top_posts(
             }
         )
     return top_posts, posts_period, posts_sort, posts_date_from, posts_date_to
+
+
+async def _forward_stats(session, fw_period: str) -> tuple[list[dict], str, int]:
+    """Репосты наших постов в другие каналы/группы, сгруппированные по тому, куда репостнули."""
+    fw_period, since, until, _, _ = _resolve_period(fw_period, None, None)
+
+    q = (
+        select(PostForward, PublishedPost, DraftPost, TargetChannel)
+        .join(PublishedPost, PostForward.published_post_id == PublishedPost.id)
+        .join(DraftPost, PublishedPost.draft_post_id == DraftPost.id)
+        .join(TargetChannel, PublishedPost.target_channel_id == TargetChannel.id)
+        .where(PostForward.forwarded_at <= until)
+        .order_by(PostForward.forwarded_at.desc())
+    )
+    if since is not None:
+        q = q.where(PostForward.forwarded_at >= since)
+    rows = (await session.execute(q)).all()
+
+    groups: dict[int, dict] = {}
+    for fw, published, draft, target in rows:
+        g = groups.setdefault(
+            fw.forward_chat_id,
+            {
+                "title": fw.forward_chat_title or (f"@{fw.forward_chat_username}" if fw.forward_chat_username else "Без названия"),
+                "username": fw.forward_chat_username,
+                "chat_type": fw.forward_chat_type,
+                "reposts": 0,
+                "views": 0,
+                "posts": {},
+            },
+        )
+        g["reposts"] += 1
+        g["views"] += fw.views
+        text = (draft.translated_text or "").strip()
+        post = g["posts"].setdefault(
+            published.id,
+            {
+                "snippet": ((text[:100] + "…") if len(text) > 100 else text) or "(без текста)",
+                "link": f"https://t.me/{target.username}/{published.tg_message_id}",
+                "forwards": [],
+            },
+        )
+        post["forwards"].append(
+            {
+                "forwarded_at": fw.forwarded_at,
+                "views": fw.views,
+                "link": f"https://t.me/{fw.forward_chat_username}/{fw.forward_message_id}" if fw.forward_chat_username else "",
+            }
+        )
+
+    result = []
+    for g in groups.values():
+        g["posts"] = list(g["posts"].values())
+        g["posts_count"] = len(g["posts"])
+        result.append(g)
+    result.sort(key=lambda g: (g["reposts"], g["views"]), reverse=True)
+    return result[:30], fw_period, len(rows)
 
 
 def _resolve_period(
@@ -267,6 +325,7 @@ async def dashboard(
     posts_sort: str = "views",
     posts_date_from: str | None = None,
     posts_date_to: str | None = None,
+    fw_period: str = "30",
 ):
     period, since, until, date_from, date_to = _resolve_period(period, date_from, date_to)
     granularity = _granularity_for(since, until)
@@ -328,6 +387,7 @@ async def dashboard(
         top_posts, posts_period, posts_sort, posts_date_from, posts_date_to = await _top_posts(
             session, posts_period, posts_sort, posts_date_from, posts_date_to
         )
+        forward_groups, fw_period, forwards_total = await _forward_stats(session, fw_period)
 
     growth_first = growth_series[0]["total"] if growth_series else None
     growth_last = growth_series[-1]["total"] if growth_series else None
@@ -370,6 +430,9 @@ async def dashboard(
             "posts_sort": posts_sort,
             "posts_date_from": posts_date_from,
             "posts_date_to": posts_date_to,
+            "forward_groups": forward_groups,
+            "fw_period": fw_period,
+            "forwards_total": forwards_total,
         },
     )
 

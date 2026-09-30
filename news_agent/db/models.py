@@ -159,6 +159,32 @@ class PostStats(Base):
     published_post: Mapped[PublishedPost] = relationship()
 
 
+class PostForward(Base):
+    """Публичный репост нашего поста в другой канал/группу (stats.getMessagePublicForwards,
+    собирается через MTProto — Bot API таких данных не даёт)."""
+
+    __tablename__ = "post_forwards"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    published_post_id: Mapped[int] = mapped_column(ForeignKey("published_posts.id"))
+    forward_chat_id: Mapped[int] = mapped_column(BigInteger)
+    forward_chat_title: Mapped[str] = mapped_column(String(255), default="")
+    forward_chat_username: Mapped[str] = mapped_column(String(255), default="")
+    forward_chat_type: Mapped[str] = mapped_column(String(16), default="channel")  # channel / group
+    forward_message_id: Mapped[int] = mapped_column()
+    forwarded_at: Mapped[dt.datetime] = mapped_column(**_TZ_NOW)
+    views: Mapped[int] = mapped_column(default=0)
+
+    published_post: Mapped[PublishedPost] = relationship()
+
+    __table_args__ = (
+        UniqueConstraint(
+            "published_post_id", "forward_chat_id", "forward_message_id", name="uq_post_forwards_post_chat_msg"
+        ),
+        Index("ix_post_forwards_forwarded_at", "forwarded_at"),
+    )
+
+
 # --- stats / attribution (3.x) ------------------------------------------
 
 class InviteLink(Base):

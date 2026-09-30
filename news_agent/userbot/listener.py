@@ -21,6 +21,7 @@ from news_agent.db.models import RawPost, Source, UserbotAccount
 from news_agent.db.session import session_scope
 from news_agent.services.language import detect_language
 from news_agent.services.media_relay import upload_and_get_ref
+from news_agent.stats.post_forwards import collect_post_forwards
 from news_agent.stats.post_stats import collect_post_stats
 
 logger = logging.getLogger(__name__)
@@ -54,6 +55,7 @@ class AccountWorker:
         await asyncio.gather(
             self._sync_sources_loop(),
             self._post_stats_loop(),
+            self._post_forwards_loop(),
             self.client.run_until_disconnected(),
         )
 
@@ -77,6 +79,17 @@ class AccountWorker:
             except Exception:
                 logger.exception("Аккаунт %s: ошибка сбора статистики постов", self.account_id)
             await asyncio.sleep(settings.post_stats_poll_interval)
+
+    async def _post_forwards_loop(self) -> None:
+        while True:
+            try:
+                if await self._is_post_stats_owner():
+                    found = await collect_post_forwards(self.client, settings.post_forwards_lookback_days)
+                    if found:
+                        logger.info("Аккаунт %s: обновлено публичных репостов: %d", self.account_id, found)
+            except Exception:
+                logger.exception("Аккаунт %s: ошибка сбора репостов", self.account_id)
+            await asyncio.sleep(settings.post_forwards_poll_interval)
 
     async def _sync_sources_loop(self) -> None:
         """Периодически подтягивает список источников из БД и постепенно вступает в новые."""

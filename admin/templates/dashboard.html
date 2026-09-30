@@ -169,6 +169,48 @@
   {% endif %}
 </div>
 
+<div class="card" id="forwards">
+  <h3>Репосты постов в другие каналы и группы</h3>
+  <p class="muted" style="margin-top:-6px">
+    Только публичные репосты (в открытые каналы и группы). Обновляется раз в час. Для сбора аккаунт юзербота должен быть администратором вашего канала (права не нужны).
+  </p>
+  <div class="subtabs">
+    <a href="/?fw_period=today#forwards" class="subtab-btn {{ 'active' if fw_period == 'today' }}">Сегодня</a>
+    <a href="/?fw_period=7#forwards" class="subtab-btn {{ 'active' if fw_period == '7' }}">7 дней</a>
+    <a href="/?fw_period=30#forwards" class="subtab-btn {{ 'active' if fw_period == '30' }}">30 дней</a>
+    <a href="/?fw_period=90#forwards" class="subtab-btn {{ 'active' if fw_period == '90' }}">90 дней</a>
+    <a href="/?fw_period=all#forwards" class="subtab-btn {{ 'active' if fw_period == 'all' }}">Всё время</a>
+  </div>
+
+  {% if forward_groups %}
+  <p class="muted" style="margin-bottom:10px">Репостов: {{ forwards_total }} · Каналов/групп: {{ forward_groups|length }}</p>
+  {% for g in forward_groups %}
+  <details class="list-item">
+    <summary style="cursor:pointer; list-style:none;">
+      <div class="row">
+        <span class="title">{{ g.title }}{% if g.username %} <span class="muted">@{{ g.username }}</span>{% endif %}</span>
+        <span class="badge on">{{ 'группа' if g.chat_type == 'group' else 'канал' }}</span>
+      </div>
+      <div class="meta">постов: <b>{{ g.posts_count }}</b> · репостов: <b>{{ g.reposts }}</b> · просмотры репостов: <b>{{ g.views }}</b></div>
+    </summary>
+    {% for p in g.posts %}
+    <div class="meta" style="margin-top:10px; padding-top:8px; border-top:1px solid var(--border);">
+      <div>{{ p.snippet }}</div>
+      <div style="margin-top:4px;">
+        <a href="{{ p.link }}" target="_blank" rel="noopener">оригинал</a>
+        {% for f in p.forwards %}
+        · <a href="{{ f.link or p.link }}" target="_blank" rel="noopener">репост {{ f.forwarded_at.strftime("%d.%m %H:%M") }}</a> (👁 {{ f.views }})
+        {% endfor %}
+      </div>
+    </div>
+    {% endfor %}
+  </details>
+  {% endfor %}
+  {% else %}
+  <div class="empty-state">За выбранный период репостов в публичные каналы и группы не найдено.</div>
+  {% endif %}
+</div>
+
 <div class="card">
   <h3>Аккаунты-слушатели</h3>
   {% if accounts %}

@@ -29,7 +29,45 @@
   </div>
 </div>
 
-<div class="card" id="subscriber-stats">
+<style>
+  .tab-pane { display: none; }
+  html[data-tab="subscriber-stats"] #subscriber-stats,
+  html[data-tab="top-posts"] #top-posts,
+  html[data-tab="forwards"] #forwards,
+  html[data-tab="accounts"] #accounts { display: block; }
+  .dash-tabs .subtab-btn { padding: 8px 10px; }
+</style>
+
+<div class="subtabs dash-tabs">
+  <button type="button" class="subtab-btn" data-tab-btn="subscriber-stats" onclick="showDashTab('subscriber-stats')">Подписчики</button>
+  <button type="button" class="subtab-btn" data-tab-btn="top-posts" onclick="showDashTab('top-posts')">Посты</button>
+  <button type="button" class="subtab-btn" data-tab-btn="forwards" onclick="showDashTab('forwards')">Репосты</button>
+  <button type="button" class="subtab-btn" data-tab-btn="accounts" onclick="showDashTab('accounts')">Юзерботы</button>
+</div>
+<script>
+  // Активная вкладка хранится в #hash (совпадает с id блока), поэтому ссылки смены периода/сортировки
+  // с якорями вида /?period=7#subscriber-stats после перезагрузки остаются на своей вкладке.
+  (function () {
+    var TABS = ['subscriber-stats', 'top-posts', 'forwards', 'accounts'];
+    function current() {
+      var h = location.hash.slice(1);
+      return TABS.indexOf(h) >= 0 ? h : 'subscriber-stats';
+    }
+    function setTab(t, remember) {
+      document.documentElement.setAttribute('data-tab', t);
+      document.querySelectorAll('[data-tab-btn]').forEach(function (b) {
+        b.classList.toggle('active', b.getAttribute('data-tab-btn') === t);
+      });
+      if (remember) history.replaceState(null, '', '#' + t);
+      window.dispatchEvent(new Event('resize'));
+    }
+    window.showDashTab = function (t) { setTab(t, true); };
+    window.addEventListener('hashchange', function () { setTab(current(), false); });
+    setTab(current(), false);
+  })();
+</script>
+
+<div class="card tab-pane" id="subscriber-stats">
   <h3>Подписчики — динамика</h3>
   <div class="subtabs">
     <a href="/?period=today#subscriber-stats" class="subtab-btn {{ 'active' if period == 'today' }}">Сегодня</a>
@@ -117,7 +155,7 @@
   {% endif %}
 </div>
 
-<div class="card" id="top-posts">
+<div class="card tab-pane" id="top-posts">
   <h3>Топ постов</h3>
   <p class="muted" style="margin-top:-6px">
     Просмотры/репосты/реакции/комментарии обновляются в фоне раз в ~15 минут, для новых постов появляются не сразу.
@@ -169,7 +207,7 @@
   {% endif %}
 </div>
 
-<div class="card" id="forwards">
+<div class="card tab-pane" id="forwards">
   <h3>Репосты постов в другие каналы и группы</h3>
   <p class="muted" style="margin-top:-6px">
     Только публичные репосты (в открытые каналы и группы). Обновляется раз в час. Для сбора аккаунт юзербота должен быть администратором вашего канала (права не нужны).
@@ -211,7 +249,7 @@
   {% endif %}
 </div>
 
-<div class="card">
+<div class="card tab-pane" id="accounts">
   <h3>Аккаунты-слушатели</h3>
   {% if accounts %}
   <div class="table-wrap">

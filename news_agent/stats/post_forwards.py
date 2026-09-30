@@ -24,7 +24,7 @@ MAX_PAGES = 5
 PAUSE_BETWEEN_CALLS = 0.5
 
 
-def _chat_info(chat) -> tuple[str, str, str]:
+def chat_info(chat) -> tuple[str, str, str]:
     if chat is None:
         return "", "", "channel"
     title = getattr(chat, "title", "") or ""
@@ -76,7 +76,7 @@ async def _fetch_post_forwards(
             if chat_id == own_chat_id:
                 continue
             raw_id = getattr(peer, "channel_id", None) or getattr(peer, "chat_id", None)
-            title, username, chat_type = _chat_info(chats_by_id.get(raw_id))
+            title, username, chat_type = chat_info(chats_by_id.get(raw_id))
             found.append(
                 {
                     "chat_id": chat_id,

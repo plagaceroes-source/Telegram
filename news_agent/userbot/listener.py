@@ -21,6 +21,7 @@ from news_agent.db.models import RawPost, Source, UserbotAccount
 from news_agent.db.session import session_scope
 from news_agent.services.language import detect_language
 from news_agent.services.media_relay import upload_and_get_ref
+from news_agent.stats.mentions import collect_mentions
 from news_agent.stats.post_forwards import collect_post_forwards
 from news_agent.stats.post_stats import collect_post_stats
 
@@ -56,6 +57,7 @@ class AccountWorker:
             self._sync_sources_loop(),
             self._post_stats_loop(),
             self._post_forwards_loop(),
+            self._mentions_loop(),
             self.client.run_until_disconnected(),
         )
 
@@ -90,6 +92,16 @@ class AccountWorker:
             except Exception:
                 logger.exception("Аккаунт %s: ошибка сбора репостов", self.account_id)
             await asyncio.sleep(settings.post_forwards_poll_interval)
+
+    async def _mentions_loop(self) -> None:
+        while True:
+            try:
+                if await self._is_post_stats_owner():
+                    confirmed, new = await collect_mentions(self.client)
+                    logger.info("Аккаунт %s: упоминаний канала найдено %d, новых %d", self.account_id, confirmed, new)
+            except Exception:
+                logger.exception("Аккаунт %s: ошибка поиска упоминаний", self.account_id)
+            await asyncio.sleep(settings.mentions_poll_interval)
 
     async def _sync_sources_loop(self) -> None:
         """Периодически подтягивает список источников из БД и постепенно вступает в новые."""

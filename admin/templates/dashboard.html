@@ -34,21 +34,24 @@
   html[data-tab="subscriber-stats"] #subscriber-stats,
   html[data-tab="top-posts"] #top-posts,
   html[data-tab="forwards"] #forwards,
+  html[data-tab="mentions"] #mentions,
   html[data-tab="accounts"] #accounts { display: block; }
-  .dash-tabs .subtab-btn { padding: 8px 10px; }
+  .dash-tabs { flex-wrap: wrap; overflow-x: visible; }
+  .dash-tabs .subtab-btn { padding: 8px 13px; }
 </style>
 
 <div class="subtabs dash-tabs">
   <button type="button" class="subtab-btn" data-tab-btn="subscriber-stats" onclick="showDashTab('subscriber-stats')">Подписчики</button>
   <button type="button" class="subtab-btn" data-tab-btn="top-posts" onclick="showDashTab('top-posts')">Посты</button>
   <button type="button" class="subtab-btn" data-tab-btn="forwards" onclick="showDashTab('forwards')">Репосты</button>
+  <button type="button" class="subtab-btn" data-tab-btn="mentions" onclick="showDashTab('mentions')">Упоминания</button>
   <button type="button" class="subtab-btn" data-tab-btn="accounts" onclick="showDashTab('accounts')">Юзерботы</button>
 </div>
 <script>
   // Активная вкладка хранится в #hash (совпадает с id блока), поэтому ссылки смены периода/сортировки
   // с якорями вида /?period=7#subscriber-stats после перезагрузки остаются на своей вкладке.
   (function () {
-    var TABS = ['subscriber-stats', 'top-posts', 'forwards', 'accounts'];
+    var TABS = ['subscriber-stats', 'top-posts', 'forwards', 'mentions', 'accounts'];
     function current() {
       var h = location.hash.slice(1);
       return TABS.indexOf(h) >= 0 ? h : 'subscriber-stats';
@@ -246,6 +249,46 @@
   {% endfor %}
   {% else %}
   <div class="empty-state">За выбранный период репостов в публичные каналы и группы не найдено.</div>
+  {% endif %}
+</div>
+
+<div class="card tab-pane" id="mentions">
+  <h3>Упоминания канала в других каналах и группах</h3>
+  <p class="muted" style="margin-top:-6px">
+    Сообщения, где встречается @username или ссылка на ваш канал (в том числе инвайт-ссылки). Ищем глобальным поиском Telegram и в каналах-источниках, обновляется раз в час. Закрытые чаты и личные переписки поиск не видит.
+  </p>
+  <div class="subtabs">
+    <a href="/?mn_period=today#mentions" class="subtab-btn {{ 'active' if mn_period == 'today' }}">Сегодня</a>
+    <a href="/?mn_period=7#mentions" class="subtab-btn {{ 'active' if mn_period == '7' }}">7 дней</a>
+    <a href="/?mn_period=30#mentions" class="subtab-btn {{ 'active' if mn_period == '30' }}">30 дней</a>
+    <a href="/?mn_period=90#mentions" class="subtab-btn {{ 'active' if mn_period == '90' }}">90 дней</a>
+    <a href="/?mn_period=all#mentions" class="subtab-btn {{ 'active' if mn_period == 'all' }}">Всё время</a>
+  </div>
+
+  {% if mention_groups %}
+  <p class="muted" style="margin-bottom:10px">Упоминаний: {{ mentions_total }} · Каналов/групп: {{ mention_groups|length }}</p>
+  {% for g in mention_groups %}
+  <details class="list-item">
+    <summary style="cursor:pointer; list-style:none;">
+      <div class="row">
+        <span class="title">{{ g.title }}{% if g.username %} <span class="muted">@{{ g.username }}</span>{% endif %}</span>
+        <span class="badge on">{{ 'группа' if g.chat_type == 'group' else 'канал' }}</span>
+      </div>
+      <div class="meta">упоминаний: <b>{{ g.count }}</b> · просмотры сообщений: <b>{{ g.views }}</b></div>
+    </summary>
+    {% for m in g.mentions %}
+    <div class="meta" style="margin-top:10px; padding-top:8px; border-top:1px solid var(--border);">
+      <div>{{ m.snippet }}</div>
+      <div style="margin-top:4px;">
+        {{ m.date.strftime("%d.%m.%Y %H:%M") }} · {{ m.matched }} · 👁 {{ m.views }}
+        {% if m.link %}· <a href="{{ m.link }}" target="_blank" rel="noopener">открыть сообщение</a>{% endif %}
+      </div>
+    </div>
+    {% endfor %}
+  </details>
+  {% endfor %}
+  {% else %}
+  <div class="empty-state">За выбранный период упоминаний не найдено (данные собираются в фоне раз в час).</div>
   {% endif %}
 </div>
 

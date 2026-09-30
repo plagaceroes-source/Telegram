@@ -18,6 +18,7 @@ from news_agent.db.models import (
     ChannelStatsDaily,
     DraftPost,
     InviteLink,
+    ChannelMention,
     PostForward,
     PostStats,
     PublishedPost,
@@ -170,6 +171,45 @@ async def _forward_stats(session, fw_period: str) -> tuple[list[dict], str, int]
         result.append(g)
     result.sort(key=lambda g: (g["reposts"], g["views"]), reverse=True)
     return result[:30], fw_period, len(rows)
+
+
+async def _mention_stats(session, mn_period: str) -> tuple[list[dict], str, int]:
+    """Упоминания нашего канала в чужих каналах/группах, сгруппированные по чату."""
+    mn_period, since, until, _, _ = _resolve_period(mn_period, None, None)
+
+    q = select(ChannelMention).where(ChannelMention.message_date <= until).order_by(ChannelMention.message_date.desc())
+    if since is not None:
+        q = q.where(ChannelMention.message_date >= since)
+    rows = list((await session.execute(q)).scalars())
+
+    groups: dict[int, dict] = {}
+    for r in rows:
+        g = groups.setdefault(
+            r.chat_id,
+            {
+                "title": r.chat_title or (f"@{r.chat_username}" if r.chat_username else "Без названия"),
+                "username": r.chat_username,
+                "chat_type": r.chat_type,
+                "mentions": [],
+                "views": 0,
+            },
+        )
+        g["views"] += r.views
+        g["mentions"].append(
+            {
+                "date": r.message_date,
+                "snippet": r.snippet or "(без текста)",
+                "matched": r.matched,
+                "views": r.views,
+                "link": f"https://t.me/{r.chat_username}/{r.message_id}" if r.chat_username else "",
+            }
+        )
+
+    result = list(groups.values())
+    for g in result:
+        g["count"] = len(g["mentions"])
+    result.sort(key=lambda g: (g["count"], g["views"]), reverse=True)
+    return result[:30], mn_period, len(rows)
 
 
 def _resolve_period(
@@ -326,6 +366,7 @@ async def dashboard(
     posts_date_from: str | None = None,
     posts_date_to: str | None = None,
     fw_period: str = "30",
+    mn_period: str = "30",
 ):
     period, since, until, date_from, date_to = _resolve_period(period, date_from, date_to)
     granularity = _granularity_for(since, until)
@@ -388,6 +429,7 @@ async def dashboard(
             session, posts_period, posts_sort, posts_date_from, posts_date_to
         )
         forward_groups, fw_period, forwards_total = await _forward_stats(session, fw_period)
+        mention_groups, mn_period, mentions_total = await _mention_stats(session, mn_period)
 
     growth_first = growth_series[0]["total"] if growth_series else None
     growth_last = growth_series[-1]["total"] if growth_series else None
@@ -433,6 +475,9 @@ async def dashboard(
             "forward_groups": forward_groups,
             "fw_period": fw_period,
             "forwards_total": forwards_total,
+            "mention_groups": mention_groups,
+            "mn_period": mn_period,
+            "mentions_total": mentions_total,
         },
     )
 

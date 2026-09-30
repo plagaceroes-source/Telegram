@@ -102,6 +102,9 @@ class Settings:
     post_forwards_poll_interval: int = field(default_factory=lambda: _int("POST_FORWARDS_POLL_INTERVAL", 3600))
     post_forwards_lookback_days: int = field(default_factory=lambda: _int("POST_FORWARDS_LOOKBACK_DAYS", 30))
 
+    # Поиск упоминаний нашего канала в чужих каналах/группах (news_agent/stats/mentions.py).
+    mentions_poll_interval: int = field(default_factory=lambda: _int("MENTIONS_POLL_INTERVAL", 3600))
+
     # Группа для ежедневных/месячных отчётов по статистике (news_agent/reports/).
     # Пока не задана — отчёты не запускаются (бот стартует как обычно).
     reports_chat_id: int | None = field(default_factory=lambda: _int("REPORTS_CHAT_ID", 0) or None)

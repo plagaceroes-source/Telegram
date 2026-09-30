@@ -185,6 +185,30 @@ class PostForward(Base):
     )
 
 
+class ChannelMention(Base):
+    """Упоминание нашего канала (@username или ссылка t.me/...) в чужом сообщении —
+    найдено глобальным поиском Telegram или поиском по каналам-источникам."""
+
+    __tablename__ = "channel_mentions"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    chat_id: Mapped[int] = mapped_column(BigInteger)
+    chat_title: Mapped[str] = mapped_column(String(255), default="")
+    chat_username: Mapped[str] = mapped_column(String(255), default="")
+    chat_type: Mapped[str] = mapped_column(String(16), default="channel")  # channel / group
+    message_id: Mapped[int] = mapped_column()
+    message_date: Mapped[dt.datetime] = mapped_column(**_TZ_NOW)
+    snippet: Mapped[str] = mapped_column(String(300), default="")
+    matched: Mapped[str] = mapped_column(String(255), default="")  # что именно нашли: @username / t.me/+код
+    views: Mapped[int] = mapped_column(default=0)
+    found_at: Mapped[dt.datetime] = mapped_column(**_TZ_NOW)
+
+    __table_args__ = (
+        UniqueConstraint("chat_id", "message_id", name="uq_channel_mentions_chat_msg"),
+        Index("ix_channel_mentions_message_date", "message_date"),
+    )
+
+
 # --- stats / attribution (3.x) ------------------------------------------
 
 class InviteLink(Base):

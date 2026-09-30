@@ -1,49 +1,72 @@
-"""Бот-предложка: подписчики присылают новости в личку, они попадают в обычную
-очередь утверждения (DraftPost → карточка с кнопками Опубликовать/Редактировать/
-Отклонить в approval-боте). Редактор может ответить автору прямо из карточки.
+"""Отдельный бот «предложка»: подписчики присылают новости в личку, редактор
+разбирает их прямо в этом же боте — карточка с кнопками Опубликовать /
+Редактировать / Ответить автору / Отклонить приходит в SUGGEST_CHAT_ID (или в личку
+из APPROVER_CHAT_IDS). С апрув-ботом не связан: свой токен, свои карточки, а
+публикует в канал сам (бот должен быть админом целевого канала).
 
-Второй бот нужен только для общения с подписчиками. Медиа он скачивает своим
-токеном и перезаливает через основной бот в служебный чат (file_id привязан к
-боту, а публикует основной), поэтому процессу нужны оба токена.
+Новость хранится как DraftPost со статусом "suggested" — апрув-бот берёт только
+"pending_approval", так что чужих карточек не создаёт. Медиа не скачиваем:
+file_id, полученный от подписчика, валиден для этого же бота при публикации.
 """
 from __future__ import annotations
 
 import asyncio
 import logging
-import tempfile
-from pathlib import Path
 
 from aiogram import Bot, Dispatcher, F, Router
 from aiogram.filters import Command
-from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, Message, User
+from aiogram.types import (
+    CallbackQuery,
+    ForceReply,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    Message,
+    User,
+)
 from sqlalchemy import select
 
+from news_agent.bot.publish import publish_draft, reject_draft
 from news_agent.bot.session import build_bot
 from news_agent.config import settings
-from news_agent.db.models import DraftPost, NewsSubmission, RawPost, Source
+from news_agent.db.models import DraftPost, NewsSubmission, RawPost, Source, TargetChannel
 from news_agent.db.session import session_scope
-from news_agent.services.media_relay import upload_and_get_ref
+from news_agent.services.media_relay import CAPTION_LIMIT, encode_ref, resolve_media
 
 logger = logging.getLogger(__name__)
 
-router = Router()
-router.message.filter(F.chat.type == "private")
-
+STATUS_OPEN = "suggested"
 SOURCE_USERNAME = "suggest_bot"
 ALBUM_WAIT = 1.5  # сек: сколько ждать остальные части альбома
-MAX_DOWNLOAD_BYTES = 20 * 1024 * 1024  # лимит Bot API на скачивание файлов
+TEXT_LIMIT = 4000  # лимит текстового сообщения Telegram 4096, с запасом на заголовок
+
+intake = Router()  # приём новостей от подписчиков — только личка
+intake.message.filter(F.chat.type == "private")
+review = Router()  # разбор редактором: кнопки и текст правки/ответа — в любом чате
 
 _albums: dict[str, list[Message]] = {}
+# user_id -> (действие, draft_id, чат и id карточки, на которой нажали кнопку)
+_awaiting: dict[int, tuple[str, int, int, int]] = {}
 # Сильные ссылки на фоновые задачи: event loop держит их только слабо (иначе GC
 # может убить задачу во время sleep).
 _tasks: set[asyncio.Task] = set()
 
 
-class MediaTooLarge(Exception):
-    pass
+def _review_chats() -> list[int]:
+    return [settings.suggest_chat_id] if settings.suggest_chat_id else list(settings.approver_chat_ids)
 
 
-@router.message(Command("start"))
+def _is_editor(user_id: int) -> bool:
+    return not settings.approver_chat_ids or user_id in settings.approver_chat_ids
+
+
+def _label(user: User) -> str:
+    name = user.first_name or "без имени"
+    return f"{name} (@{user.username})" if user.username else f"{name} (id {user.id})"
+
+
+# ---------------------------------------------------------------- приём новостей
+
+@intake.message(Command("start"))
 async def on_start(message: Message) -> None:
     await message.answer(
         "Привет! Здесь можно предложить новость для канала.\n\n"
@@ -52,101 +75,78 @@ async def on_start(message: Message) -> None:
     )
 
 
-@router.message(F.reply_to_message.from_user.is_bot, F.text)
-async def on_reply_to_editor(message: Message, main_bot: Bot) -> None:
+@intake.message(F.reply_to_message.from_user.is_bot, F.text)
+async def on_reply_to_editor(message: Message, bot: Bot) -> None:
     """Ответ автора на сообщение редактора — не новая новость, а реплика в диалоге."""
-    user = message.from_user
-    draft_id = await _last_draft_id(user.id)
+    draft_id = await _last_draft_id(message.from_user.id)
     keyboard = None
     if draft_id:
         keyboard = InlineKeyboardMarkup(
-            inline_keyboard=[[InlineKeyboardButton(text="💬 Ответить автору", callback_data=f"reply:{draft_id}")]]
+            inline_keyboard=[[InlineKeyboardButton(text="💬 Ответить автору", callback_data=f"sreply:{draft_id}")]]
         )
-    text = f"💬 Ответ автора {_label(user)}:\n\n{message.text}"
-    if not await _notify_approvers(main_bot, text, keyboard):
-        await message.answer("Не удалось передать сообщение редактору, попробуйте позже.")
-        return
-    await message.answer("Передал редактору.")
+    delivered = False
+    for chat_id in _review_chats():
+        try:
+            await bot.send_message(
+                chat_id=chat_id,
+                text=f"💬 Ответ автора {_label(message.from_user)}:\n\n{message.text}"[:TEXT_LIMIT],
+                reply_markup=keyboard,
+            )
+            delivered = True
+        except Exception:
+            logger.exception("Не удалось передать ответ автора в чат %s", chat_id)
+    await message.answer("Передал редактору." if delivered else "Не удалось передать сообщение, попробуйте позже.")
 
 
-@router.message((F.text & ~F.text.startswith("/")) | F.photo | F.video)
-async def on_submission(message: Message, bot: Bot, main_bot: Bot) -> None:
+@intake.message((F.text & ~F.text.startswith("/")) | F.photo | F.video)
+async def on_submission(message: Message, bot: Bot) -> None:
     if not message.media_group_id:
-        await _process_submission([message], bot, main_bot)
+        await _process_submission([message], bot)
         return
 
     group_id = message.media_group_id
     is_first = group_id not in _albums
     _albums.setdefault(group_id, []).append(message)
     if is_first:
-        task = asyncio.create_task(_flush_album(group_id, bot, main_bot))
+        task = asyncio.create_task(_flush_album(group_id, bot))
         _tasks.add(task)
         task.add_done_callback(_tasks.discard)
 
 
-@router.message()
+@intake.message()
 async def on_unsupported(message: Message) -> None:
     await message.answer("Принимаю текст, фото и видео. Пришлите новость в таком виде.")
 
 
-async def _flush_album(group_id: str, bot: Bot, main_bot: Bot) -> None:
+async def _flush_album(group_id: str, bot: Bot) -> None:
     await asyncio.sleep(ALBUM_WAIT)
     messages = sorted(_albums.pop(group_id, []), key=lambda m: m.message_id)
     if messages:
-        await _process_submission(messages, bot, main_bot)
+        await _process_submission(messages, bot)
 
 
-def _label(user: User) -> str:
-    name = user.first_name or "без имени"
-    return f"{name} (@{user.username})" if user.username else f"{name} (id {user.id})"
-
-
-async def _relay_media(message: Message, bot: Bot, main_bot: Bot) -> str | None:
+def _media_ref(message: Message) -> str | None:
     if message.photo:
-        file, suffix = message.photo[-1], ".jpg"
-    elif message.video:
-        file, suffix = message.video, ".mp4"
-    else:
-        return None
-
-    if file.file_size and file.file_size > MAX_DOWNLOAD_BYTES:
-        raise MediaTooLarge
-    if not settings.storage_chat_id:
-        raise RuntimeError("Не задан STORAGE_CHAT_ID/APPROVAL_CHAT_ID — некуда перезаливать медиа")
-
-    with tempfile.TemporaryDirectory() as tmp:
-        path = Path(tmp) / f"{file.file_unique_id}{suffix}"
-        await bot.download(file, destination=path)
-        return await upload_and_get_ref(main_bot, settings.storage_chat_id, str(path))
+        return encode_ref("photo", message.photo[-1].file_id)
+    if message.video:
+        return encode_ref("video", message.video.file_id)
+    return None
 
 
-async def _process_submission(messages: list[Message], bot: Bot, main_bot: Bot) -> None:
+async def _process_submission(messages: list[Message], bot: Bot) -> None:
     first = messages[0]
     text = next((m.caption or m.text for m in messages if m.caption or m.text), "").strip()
-
-    refs: list[str] = []
-    try:
-        for m in messages:
-            ref = await _relay_media(m, bot, main_bot)
-            if ref:
-                refs.append(ref)
-    except MediaTooLarge:
-        await first.answer("Файл слишком большой — принимаю фото и видео до 20 МБ.")
-        return
-    except Exception:
-        logger.exception("Не удалось принять предложку от %s", first.from_user.id)
-        await first.answer("Не удалось принять сообщение, попробуйте ещё раз чуть позже.")
-        return
-
+    refs = [ref for m in messages if (ref := _media_ref(m))]
     if not text and not refs:
         return
 
-    await _save_submission(first.from_user, first.message_id, text, refs)
+    draft_id = await _save_submission(first.from_user, first.message_id, text, refs)
     await first.answer("Спасибо! Новость отправлена редактору. Если понадобятся уточнения — он ответит вам здесь.")
     logger.info("Предложка от %s: текст=%d симв., медиа=%d", first.from_user.id, len(text), len(refs))
+    await send_card(bot, draft_id)
 
 
-async def _save_submission(user: User, message_id: int, text: str, refs: list[str]) -> None:
+async def _save_submission(user: User, message_id: int, text: str, refs: list[str]) -> int:
     async with session_scope() as session:
         result = await session.execute(select(Source).where(Source.username == SOURCE_USERNAME))
         source = result.scalars().first()
@@ -162,9 +162,7 @@ async def _save_submission(user: User, message_id: int, text: str, refs: list[st
         session.add(raw_post)
         await session.flush()
 
-        draft = DraftPost(
-            raw_post_id=raw_post.id, translated_text=text, media_paths=refs, status="pending_approval"
-        )
+        draft = DraftPost(raw_post_id=raw_post.id, translated_text=text, media_paths=refs, status=STATUS_OPEN)
         session.add(draft)
         await session.flush()
 
@@ -176,6 +174,7 @@ async def _save_submission(user: User, message_id: int, text: str, refs: list[st
                 first_name=user.first_name or "",
             )
         )
+        return draft.id
 
 
 async def _last_draft_id(user_id: int) -> int | None:
@@ -189,31 +188,212 @@ async def _last_draft_id(user_id: int) -> int | None:
         return result.scalars().first()
 
 
-async def _notify_approvers(main_bot: Bot, text: str, keyboard: InlineKeyboardMarkup | None) -> bool:
-    recipients = [settings.approval_chat_id] if settings.approval_chat_id else settings.approver_chat_ids
-    delivered = False
-    for chat_id in recipients:
+# ---------------------------------------------------------------- карточки
+
+async def _build_keyboard(draft_id: int) -> InlineKeyboardMarkup:
+    async with session_scope() as session:
+        result = await session.execute(select(TargetChannel).where(TargetChannel.active.is_(True)))
+        targets = list(result.scalars())
+
+    rows: list[list[InlineKeyboardButton]] = []
+    if len(targets) <= 1:
+        target_id = targets[0].id if targets else 0
+        rows.append([InlineKeyboardButton(text="✅ Опубликовать", callback_data=f"spub:{draft_id}:{target_id}")])
+    else:
+        for target in targets:
+            rows.append(
+                [
+                    InlineKeyboardButton(
+                        text=f"✅ В «{target.title or target.username}»",
+                        callback_data=f"spub:{draft_id}:{target.id}",
+                    )
+                ]
+            )
+    rows.append(
+        [
+            InlineKeyboardButton(text="✏️ Редактировать", callback_data=f"sedit:{draft_id}"),
+            InlineKeyboardButton(text="❌ Отклонить", callback_data=f"srej:{draft_id}"),
+        ]
+    )
+    rows.append([InlineKeyboardButton(text="💬 Ответить автору", callback_data=f"sreply:{draft_id}")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+async def send_card(bot: Bot, draft_id: int) -> None:
+    async with session_scope() as session:
+        draft = await session.get(DraftPost, draft_id)
+        submission = (
+            await session.execute(select(NewsSubmission).where(NewsSubmission.draft_post_id == draft_id))
+        ).scalars().first()
+        if draft is None or submission is None:
+            return
+        author = submission.first_name or "без имени"
+        if submission.username:
+            author += f" (@{submission.username})"
+        caption = f"📨 Предложка от {author}\n\n{draft.translated_text}"
+        media_refs = list(draft.media_paths)
+
+    keyboard = await _build_keyboard(draft_id)
+    for chat_id in _review_chats():
         try:
-            await main_bot.send_message(chat_id=chat_id, text=text, reply_markup=keyboard)
-            delivered = True
+            await _send_card_to(bot, chat_id, caption, keyboard, media_refs)
         except Exception:
-            logger.exception("Не удалось передать ответ автора в чат %s", chat_id)
-    return delivered
+            logger.exception("Не удалось отправить карточку предложки %s в чат %s", draft_id, chat_id)
+
+
+async def _send_card_to(
+    bot: Bot, chat_id: int, caption: str, keyboard: InlineKeyboardMarkup, media_refs: list[str]
+) -> None:
+    if not media_refs:
+        await bot.send_message(chat_id=chat_id, text=caption[:TEXT_LIMIT], reply_markup=keyboard)
+        return
+
+    media_type, source = resolve_media(media_refs[0])
+    full_caption = caption if len(media_refs) == 1 else caption + f"\n\n(+{len(media_refs) - 1} медиафайлов)"
+    send = bot.send_video if media_type == "video" else bot.send_photo
+    media_arg = {"video" if media_type == "video" else "photo": source}
+    if len(full_caption) > CAPTION_LIMIT:
+        # Подпись к медиа ограничена 1024 символами — шлём медиа без неё, текст с кнопками следом.
+        await send(chat_id=chat_id, **media_arg)
+        await bot.send_message(chat_id=chat_id, text=full_caption[:TEXT_LIMIT], reply_markup=keyboard)
+    else:
+        await send(chat_id=chat_id, caption=full_caption, reply_markup=keyboard, **media_arg)
+
+
+# ---------------------------------------------------------------- разбор редактором
+
+async def _still_open(callback: CallbackQuery, draft_id: int) -> bool:
+    async with session_scope() as session:
+        draft = await session.get(DraftPost, draft_id)
+        status = draft.status if draft else None
+    if status != STATUS_OPEN:
+        await callback.answer("Эта новость уже обработана.", show_alert=True)
+        return False
+    return True
+
+
+async def _mark_card(message: Message, suffix: str) -> None:
+    if message.caption:
+        await message.edit_caption(caption=message.caption + suffix, reply_markup=None)
+    else:
+        await message.edit_text((message.text or "") + suffix, reply_markup=None)
+
+
+@review.callback_query(F.data.startswith("spub:"))
+async def on_publish(callback: CallbackQuery, bot: Bot) -> None:
+    if not _is_editor(callback.from_user.id):
+        await callback.answer("Недостаточно прав", show_alert=True)
+        return
+    _, draft_id_str, target_id_str = callback.data.split(":")
+    draft_id, target_id = int(draft_id_str), int(target_id_str)
+    if not target_id:
+        await callback.answer("Нет ни одного целевого канала. Добавьте канал в сетку.", show_alert=True)
+        return
+    if not await _still_open(callback, draft_id):
+        return
+
+    await callback.answer("Публикую…")
+    try:
+        await publish_draft(bot, draft_id, target_id, decided_by=str(callback.from_user.id))
+    except Exception:
+        logger.exception("Ошибка публикации предложки %s", draft_id)
+        await callback.message.reply(
+            "Не удалось опубликовать. Проверьте, что этот бот — админ канала с правом публикации."
+        )
+        return
+    await _mark_card(callback.message, "\n\n✅ Опубликовано")
+
+
+@review.callback_query(F.data.startswith("srej:"))
+async def on_reject(callback: CallbackQuery) -> None:
+    if not _is_editor(callback.from_user.id):
+        await callback.answer("Недостаточно прав", show_alert=True)
+        return
+    draft_id = int(callback.data.split(":")[1])
+    if not await _still_open(callback, draft_id):
+        return
+    await reject_draft(draft_id, decided_by=str(callback.from_user.id))
+    await callback.answer("Отклонено")
+    await _mark_card(callback.message, "\n\n❌ Отклонено")
+
+
+async def _ask(callback: CallbackQuery, action: str, prompt: str) -> None:
+    if not _is_editor(callback.from_user.id):
+        await callback.answer("Недостаточно прав", show_alert=True)
+        return
+    draft_id = int(callback.data.split(":")[1])
+    if action == "edit" and not await _still_open(callback, draft_id):
+        return
+    _awaiting[callback.from_user.id] = (action, draft_id, callback.message.chat.id, callback.message.message_id)
+    await callback.answer()
+    # force_reply: в группе с privacy mode бот получает только команды и ответы на свои сообщения.
+    await callback.message.reply(prompt.format(draft_id=draft_id), reply_markup=ForceReply())
+
+
+@review.callback_query(F.data.startswith("sedit:"))
+async def on_edit_request(callback: CallbackQuery) -> None:
+    await _ask(callback, "edit", "Пришлите следующим сообщением новый текст для новости #{draft_id}.")
+
+
+@review.callback_query(F.data.startswith("sreply:"))
+async def on_reply_request(callback: CallbackQuery) -> None:
+    await _ask(callback, "reply", "Пришлите следующим сообщением ответ автору новости #{draft_id}.")
+
+
+def _has_pending(message: Message) -> bool:
+    return message.from_user is not None and message.from_user.id in _awaiting
+
+
+@review.message(F.text, _has_pending)
+async def on_pending_text(message: Message, bot: Bot) -> None:
+    action, draft_id, card_chat_id, card_message_id = _awaiting.pop(message.from_user.id)
+    if action == "edit":
+        await _apply_edit(message, bot, draft_id, card_chat_id, card_message_id)
+    else:
+        await _send_to_author(message, bot, draft_id)
+
+
+async def _apply_edit(message: Message, bot: Bot, draft_id: int, card_chat_id: int, card_message_id: int) -> None:
+    async with session_scope() as session:
+        draft = await session.get(DraftPost, draft_id)
+        if draft is None or draft.status != STATUS_OPEN:
+            await message.reply("Эта новость уже обработана или не найдена.")
+            return
+        draft.translated_text = message.text
+    try:  # старая карточка с прежним текстом больше не нужна
+        await bot.delete_message(chat_id=card_chat_id, message_id=card_message_id)
+    except Exception:
+        logger.warning("Не удалось удалить старую карточку %s", card_message_id)
+    await message.reply(f"Новость #{draft_id} обновлена, присылаю новую карточку.")
+    await send_card(bot, draft_id)
+
+
+async def _send_to_author(message: Message, bot: Bot, draft_id: int) -> None:
+    async with session_scope() as session:
+        submission = (
+            await session.execute(select(NewsSubmission).where(NewsSubmission.draft_post_id == draft_id))
+        ).scalars().first()
+    if submission is None:
+        await message.reply("Автор этой новости не найден.")
+        return
+    try:
+        await bot.send_message(chat_id=submission.tg_user_id, text=f"✉️ Ответ редактора:\n\n{message.text}")
+    except Exception:
+        logger.exception("Не удалось отправить ответ автору новости %s", draft_id)
+        await message.reply("Не удалось отправить — возможно, автор заблокировал бота.")
+        return
+    await message.reply("Ответ отправлен автору.")
 
 
 async def run_forever() -> None:
     if not settings.suggest_bot_token:
         raise SystemExit("SUGGEST_BOT_TOKEN не задан")
-    if not settings.bot_token:
-        raise SystemExit("BOT_TOKEN не задан — он нужен для передачи медиа и ответов автора редактору")
+    if not _review_chats():
+        raise SystemExit("Не задан ни SUGGEST_CHAT_ID, ни APPROVER_CHAT_IDS — некуда присылать карточки")
 
     bot = build_bot(settings.suggest_bot_token)
-    main_bot = build_bot(settings.bot_token)
     dp = Dispatcher()
-    dp.include_router(router)
-    dp["main_bot"] = main_bot
-
-    try:
-        await dp.start_polling(bot)
-    finally:
-        await main_bot.session.close()
+    # review раньше intake: текст правки/ответа от редактора не должен стать новой новостью.
+    dp.include_router(review)
+    dp.include_router(intake)
+    await dp.start_polling(bot)

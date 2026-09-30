@@ -19,7 +19,7 @@ from news_agent.bot import force_sub
 from news_agent.bot.publish import publish_draft, reject_draft
 from news_agent.bot.session import build_bot
 from news_agent.config import settings
-from news_agent.db.models import DraftPost, NewsSubmission, RawPost, Source, TargetChannel
+from news_agent.db.models import DraftPost, RawPost, Source, TargetChannel
 from news_agent.db.session import session_scope
 from news_agent.reports.scheduler import start_reports_scheduler
 from news_agent.services.media_relay import CAPTION_LIMIT, resolve_media
@@ -31,21 +31,6 @@ router = Router()
 
 # user_id -> draft_id для которого ожидается текст правки
 _awaiting_edit: dict[int, int] = {}
-# user_id -> draft_id, автору которого редактор пишет ответ (бот-предложка)
-_awaiting_reply: dict[int, int] = {}
-
-_suggest_bot: Bot | None = None
-
-
-def _get_suggest_bot() -> Bot | None:
-    """Бот-предложка нужен только чтобы отвечать авторам новостей — у автора есть
-    диалог именно с ним, основной бот написать ему первым не может."""
-    global _suggest_bot
-    if not settings.suggest_bot_token:
-        return None
-    if _suggest_bot is None:
-        _suggest_bot = build_bot(settings.suggest_bot_token)
-    return _suggest_bot
 
 
 def _is_approver(user_id: int) -> bool:
@@ -57,7 +42,7 @@ def _approver_filter(message_or_query) -> bool:
     return bool(user) and _is_approver(user.id)
 
 
-async def _build_card_keyboard(draft_id: int, has_author: bool = False) -> InlineKeyboardMarkup:
+async def _build_card_keyboard(draft_id: int) -> InlineKeyboardMarkup:
     async with session_scope() as session:
         result = await session.execute(select(TargetChannel).where(TargetChannel.active.is_(True)))
         targets = list(result.scalars())
@@ -82,22 +67,12 @@ async def _build_card_keyboard(draft_id: int, has_author: bool = False) -> Inlin
             InlineKeyboardButton(text="❌ Отклонить", callback_data=f"rej:{draft_id}"),
         ]
     )
-    if has_author:
-        rows.append([InlineKeyboardButton(text="💬 Ответить автору", callback_data=f"reply:{draft_id}")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
-async def _card_caption(
-    draft: DraftPost, raw_post: RawPost, source: Source | None, submission: NewsSubmission | None = None
-) -> str:
-    if submission is not None:
-        author = submission.first_name or "без имени"
-        if submission.username:
-            author += f" (@{submission.username})"
-        header = f"📨 Предложка от {author}\n\n"
-    else:
-        source_label = source.title or source.username if source else "неизвестный источник"
-        header = f"📰 Источник: {source_label}\n\n"
+async def _card_caption(draft: DraftPost, raw_post: RawPost, source: Source | None) -> str:
+    source_label = source.title or source.username if source else "неизвестный источник"
+    header = f"📰 Источник: {source_label}\n\n"
     return header + draft.translated_text
 
 
@@ -110,13 +85,10 @@ async def send_draft_card(bot: Bot, draft_id: int) -> None:
             return
         raw_post = await session.get(RawPost, draft.raw_post_id)
         source = await session.get(Source, raw_post.source_id) if raw_post else None
-        submission = (
-            await session.execute(select(NewsSubmission).where(NewsSubmission.draft_post_id == draft_id))
-        ).scalars().first()
-        caption = await _card_caption(draft, raw_post, source, submission)
+        caption = await _card_caption(draft, raw_post, source)
         media_paths = list(draft.media_paths)
 
-    keyboard = await _build_card_keyboard(draft_id, has_author=submission is not None)
+    keyboard = await _build_card_keyboard(draft_id)
     recipients = [settings.approval_chat_id] if settings.approval_chat_id else (settings.approver_chat_ids or [])
 
     for chat_id in recipients:
@@ -236,7 +208,6 @@ async def on_edit_request(callback: CallbackQuery) -> None:
     draft_id = int(callback.data.split(":")[1])
     if not await _still_pending(callback, draft_id):
         return
-    _awaiting_reply.pop(callback.from_user.id, None)
     _awaiting_edit[callback.from_user.id] = draft_id
     await callback.answer()
     # force_reply обязателен: в группе с включённым privacy mode бот не получает обычные
@@ -270,50 +241,6 @@ async def on_edit_text(message: Message) -> None:
         draft.approval_message_id = None  # заставит poll_pending_drafts переслать обновлённую карточку
         draft.approval_chat_id = None
     await message.reply(f"Черновик #{draft_id} обновлён, новая карточка будет прислана.")
-
-
-@router.callback_query(F.data.startswith("reply:"))
-async def on_reply_request(callback: CallbackQuery) -> None:
-    if not _approver_filter(callback):
-        await callback.answer("Недостаточно прав", show_alert=True)
-        return
-    if _get_suggest_bot() is None:
-        await callback.answer("SUGGEST_BOT_TOKEN не задан в этом сервисе — ответить автору нельзя.", show_alert=True)
-        return
-    draft_id = int(callback.data.split(":")[1])
-    _awaiting_edit.pop(callback.from_user.id, None)
-    _awaiting_reply[callback.from_user.id] = draft_id
-    await callback.answer()
-    await callback.message.reply(
-        f"Пришлите следующим сообщением ответ автору новости #{draft_id}.",
-        reply_markup=ForceReply(),
-    )
-
-
-def _has_pending_reply(message: Message) -> bool:
-    return message.from_user is not None and message.from_user.id in _awaiting_reply
-
-
-@router.message(F.text, _has_pending_reply)
-async def on_reply_text(message: Message) -> None:
-    if not _approver_filter(message):
-        return
-    draft_id = _awaiting_reply.pop(message.from_user.id)
-    async with session_scope() as session:
-        submission = (
-            await session.execute(select(NewsSubmission).where(NewsSubmission.draft_post_id == draft_id))
-        ).scalars().first()
-    suggest_bot = _get_suggest_bot()
-    if submission is None or suggest_bot is None:
-        await message.reply("Автор этой новости не найден.")
-        return
-    try:
-        await suggest_bot.send_message(chat_id=submission.tg_user_id, text=f"✉️ Ответ редактора:\n\n{message.text}")
-    except Exception:
-        logger.exception("Не удалось отправить ответ автору новости %s", draft_id)
-        await message.reply("Не удалось отправить — возможно, автор заблокировал бота.")
-        return
-    await message.reply("Ответ отправлен автору.")
 
 
 def create_dispatcher() -> Dispatcher:

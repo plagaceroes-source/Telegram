@@ -49,6 +49,10 @@ class Settings:
         default_factory=lambda: _int("STORAGE_CHAT_ID", 0) or _int("APPROVAL_CHAT_ID", 0) or None
     )
 
+    # Токен второго бота (@BotFather) — «предложка»: подписчики пишут ему новости,
+    # редактор отвечает автору из карточки на утверждение. Не задан — функция выключена.
+    suggest_bot_token: str = field(default_factory=lambda: os.getenv("SUGGEST_BOT_TOKEN", ""))
+
     # Если задан вместе с APPROVAL_CHAT_ID — ограничивает, кто из участников
     # группы может нажимать кнопки (иначе может любой участник группы).
     # Если APPROVAL_CHAT_ID не задан — это список личных чатов для рассылки карточек.

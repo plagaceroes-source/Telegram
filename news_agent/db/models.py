@@ -298,3 +298,24 @@ class GatedGroup(Base):
     added_by: Mapped[str] = mapped_column(String(128), default="")
 
     target_channel: Mapped[TargetChannel] = relationship()
+
+
+# --- предложка новостей от подписчиков --------------------------------------
+
+class NewsSubmission(Base):
+    """Новость, присланная подписчиком через бот-предложку. Сама новость живёт
+    как обычный DraftPost (проходит через карточку/правку/публикацию), а здесь —
+    кто её прислал, чтобы редактор мог ответить автору."""
+
+    __tablename__ = "news_submissions"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    draft_post_id: Mapped[int] = mapped_column(ForeignKey("draft_posts.id"), unique=True)
+    tg_user_id: Mapped[int] = mapped_column(BigInteger)
+    username: Mapped[str] = mapped_column(String(64), default="")
+    first_name: Mapped[str] = mapped_column(String(128), default="")
+    created_at: Mapped[dt.datetime] = mapped_column(**_TZ_NOW)
+
+    draft_post: Mapped[DraftPost] = relationship()
+
+    __table_args__ = (Index("ix_news_submissions_user", "tg_user_id"),)

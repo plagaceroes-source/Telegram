@@ -129,6 +129,7 @@ GitHub-репозиторий и общий `railway.json` (настройки �
    | processing | `python scripts/run_processing.py` | — |
    | userbot-1 | `python scripts/run_userbot.py` | `USERBOT_ACCOUNT_ID=1`; тот же (или отдельный) Volume на `/app/storage` |
    | stats-snapshot | `python scripts/run_stats_snapshot.py` | Settings → Cron Schedule: `0 * * * *` |
+   | suggest-bot | `python scripts/run_suggest_bot.py` | бот-предложка (см. ниже); нужны `SUGGEST_BOT_TOKEN`, `BOT_TOKEN`, `APPROVAL_CHAT_ID`; Volume не нужен |
 
    Каждый сервис — ссылку на все Shared Variables + свою `DATABASE_URL` (реф на
    сервис Postgres) добавить в Variables.
@@ -147,6 +148,7 @@ news_agent/
   processing/          — обработчик очереди raw_posts → draft_posts
   bot/                 — aiogram: карточки на утверждение + админ-команды + публикация
                           + force_sub.py — гейт на подписку в группах (см. ниже)
+  suggest/             — бот-предложка: новости от подписчиков → очередь утверждения
   stats/               — снепшоты подписчиков, join/leave атрибуция по инвайт-ссылкам
 admin/                 — FastAPI веб-админка (CRUD источников/каналов, статистика)
 scripts/               — точки входа для каждого процесса
@@ -173,6 +175,26 @@ render.yaml            — блюпринт деплоя на Render
 4. В боте: `/add_gated_group <group_chat_id> <target_id> <title...>`.
 
 Команды: `/list_gated_groups`, `/pause_gated_group <id>`, `/resume_gated_group <id>`.
+
+## Предложка новостей от подписчиков
+
+Второй бот (`scripts/run_suggest_bot.py`) принимает новости от подписчиков в личку:
+текст, фото, видео или альбом (медиа до 20 МБ — лимит Bot API). Каждая присланная
+новость становится обычным черновиком и приходит в чат утверждения карточкой с
+подписью «📨 Предложка от …» и обычными кнопками Опубликовать / Редактировать /
+Отклонить, плюс **«💬 Ответить автору»**: ответ уходит автору от имени бота-предложки.
+Если автор отвечает боту на сообщение редактора, его реплика приходит в чат
+утверждения (с кнопкой «Ответить») и не создаёт новую новость.
+
+Настройка:
+
+1. В `@BotFather` создать бота (`/newbot`), токен положить в `SUGGEST_BOT_TOKEN`.
+2. Переменную `SUGGEST_BOT_TOKEN` задать **двум** сервисам: `suggest-bot` (принимает
+   новости) и `bot` (шлёт ответы редактора авторам). Сервису `suggest-bot` также
+   нужны `BOT_TOKEN`, `APPROVAL_CHAT_ID` (или `STORAGE_CHAT_ID`) и `DATABASE_URL`.
+3. Ссылку `t.me/<username_бота>` добавить в описание канала.
+
+В админке служебный источник «Предложка» (`suggest_bot`) виден неактивным — так и задумано.
 
 ## Известные ограничения (проговорено в ТЗ, не баг)
 

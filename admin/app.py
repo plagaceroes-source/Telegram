@@ -631,7 +631,25 @@ async def queue_page(request: Request):
 # --- Статистика --------------------------------------------------------------
 
 @app.get("/stats")
-async def stats_page(request: Request, sort: str = "recent"):
+async def stats_page(
+    request: Request,
+    sort: str = "recent",
+    inv_period: str = "all",
+    inv_date_from: str | None = None,
+    inv_date_to: str | None = None,
+):
+    if inv_period not in ("today", "7", "30", "90", "all", "custom"):
+        inv_period = "all"
+    inv_period, inv_since, inv_until, inv_date_from, inv_date_to = _resolve_period(
+        inv_period, inv_date_from, inv_date_to
+    )
+    # События ссылок/«прямых» считаем только внутри выбранного периода; «всё время» — без границ.
+    event_filters = []
+    if inv_since is not None:
+        event_filters.append(SubscriberEvent.occurred_at >= inv_since)
+    if inv_period != "all":
+        event_filters.append(SubscriberEvent.occurred_at <= inv_until)
+
     async with session_scope() as session:
         channels_result = await session.execute(select(TargetChannel).order_by(TargetChannel.id))
         channels = list(channels_result.scalars())
@@ -665,7 +683,7 @@ async def stats_page(request: Request, sort: str = "recent"):
         # заметно замедлявшая именно эту вкладку.
         counts_result = await session.execute(
             select(SubscriberEvent.invite_link_id, SubscriberEvent.event_type, func.count())
-            .where(SubscriberEvent.invite_link_id.isnot(None))
+            .where(SubscriberEvent.invite_link_id.isnot(None), *event_filters)
             .group_by(SubscriberEvent.invite_link_id, SubscriberEvent.event_type)
         )
         counts_by_link: dict[int, dict[str, int]] = {}
@@ -689,10 +707,14 @@ async def stats_page(request: Request, sort: str = "recent"):
             )
 
         direct_joins = await session.scalar(
-            select(func.count()).where(SubscriberEvent.is_direct.is_(True), SubscriberEvent.event_type == "join")
+            select(func.count()).where(
+                SubscriberEvent.is_direct.is_(True), SubscriberEvent.event_type == "join", *event_filters
+            )
         )
         direct_leaves = await session.scalar(
-            select(func.count()).where(SubscriberEvent.is_direct.is_(True), SubscriberEvent.event_type == "leave")
+            select(func.count()).where(
+                SubscriberEvent.is_direct.is_(True), SubscriberEvent.event_type == "leave", *event_filters
+            )
         )
 
     if sort == "joins":
@@ -712,6 +734,9 @@ async def stats_page(request: Request, sort: str = "recent"):
             "chart_series": chart_series,
             "invite_stats": invite_stats,
             "invite_sort": sort,
+            "inv_period": inv_period,
+            "inv_date_from": inv_date_from,
+            "inv_date_to": inv_date_to,
             "direct_joins": direct_joins or 0,
             "direct_leaves": direct_leaves or 0,
             "invite_error": request.query_params.get("invite_error"),

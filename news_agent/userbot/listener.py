@@ -57,6 +57,7 @@ class AccountWorker:
             self._sync_sources_loop(),
             self._post_stats_loop(),
             self._post_forwards_loop(),
+            self._diag_channel_day_once(),
             self._mentions_loop(),
             self.client.run_until_disconnected(),
         )
@@ -102,6 +103,43 @@ class AccountWorker:
             except Exception:
                 logger.exception("Аккаунт %s: ошибка поиска упоминаний", self.account_id)
             await asyncio.sleep(settings.mentions_poll_interval)
+
+    async def _diag_channel_day_once(self) -> None:
+        """ВРЕМЕННАЯ диагностика: DIAG_CHANNEL_DAY=YYYY-MM-DD — выводит в лог все сообщения канала
+        за сутки (Мадрид) и помечает, какие из них записаны в PublishedPost."""
+        day = os.getenv("DIAG_CHANNEL_DAY")
+        if not day or not await self._is_post_stats_owner():
+            return
+        import datetime as dt
+
+        from news_agent.db.models import PublishedPost, TargetChannel
+        from news_agent.reports.period import REPORT_TZ, day_bounds_utc
+
+        since, until = day_bounds_utc(dt.date.fromisoformat(day))
+        async with session_scope() as session:
+            targets = list((await session.execute(select(TargetChannel).where(TargetChannel.active.is_(True)))).scalars())
+            known = {
+                r.tg_message_id
+                for r in (await session.execute(select(PublishedPost))).scalars()
+            }
+        for t in targets:
+            entity = await self.client.get_entity(f"@{t.username}")
+            total = in_db = 0
+            async for msg in self.client.iter_messages(entity, offset_date=until, limit=400):
+                if msg.date < since:
+                    break
+                total += 1
+                mine = msg.id in known
+                in_db += mine
+                kind = "service:" + type(msg.action).__name__ if getattr(msg, "action", None) else (
+                    "media" if msg.media else "text")
+                logger.info(
+                    "DIAG %s id=%s %s %s grouped=%s in_db=%s author=%r via_bot=%s fwd=%s | %s",
+                    t.username, msg.id, msg.date.astimezone(REPORT_TZ).strftime("%d.%m %H:%M"), kind,
+                    msg.grouped_id, mine, msg.post_author, msg.via_bot_id, bool(msg.fwd_from),
+                    (msg.message or "")[:70].replace("\n", " "),
+                )
+            logger.info("DIAG %s итого сообщений за сутки: %d, из них в PublishedPost: %d", t.username, total, in_db)
 
     async def _sync_sources_loop(self) -> None:
         """Периодически подтягивает список источников из БД и постепенно вступает в новые."""

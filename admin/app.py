@@ -19,8 +19,8 @@ from news_agent.db.models import (
     DraftPost,
     InviteLink,
     ChannelMention,
+    ChannelPost,
     PostForward,
-    PostStats,
     PublishedPost,
     RawPost,
     Source,
@@ -65,10 +65,10 @@ def _mask(value: str, keep: int = 4) -> str:
 PERIOD_DAYS = {"7": 7, "30": 30, "90": 90, "all": None}
 
 POST_SORT_FIELDS = {
-    "views": PostStats.views,
-    "reactions": PostStats.reactions_count,
-    "comments": PostStats.comments_count,
-    "forwards": PostStats.forwards,
+    "views": ChannelPost.views,
+    "reactions": ChannelPost.reactions_count,
+    "comments": ChannelPost.comments_count,
+    "forwards": ChannelPost.forwards,
 }
 
 
@@ -86,31 +86,29 @@ async def _top_posts(
     )
 
     post_q = (
-        select(PublishedPost, PostStats, DraftPost, TargetChannel)
-        .join(DraftPost, PublishedPost.draft_post_id == DraftPost.id)
-        .join(TargetChannel, PublishedPost.target_channel_id == TargetChannel.id)
-        .outerjoin(PostStats, PostStats.published_post_id == PublishedPost.id)
-        .where(PublishedPost.published_at <= until)
+        select(ChannelPost, TargetChannel)
+        .join(TargetChannel, ChannelPost.target_channel_id == TargetChannel.id)
+        .where(ChannelPost.posted_at <= until)
     )
     if since is not None:
-        post_q = post_q.where(PublishedPost.published_at >= since)
-    post_q = post_q.order_by(POST_SORT_FIELDS[posts_sort].desc().nullslast()).limit(20)
+        post_q = post_q.where(ChannelPost.posted_at >= since)
+    post_q = post_q.order_by(POST_SORT_FIELDS[posts_sort].desc()).limit(20)
     post_rows_raw = (await session.execute(post_q)).all()
 
     top_posts = []
-    for published, pstats, draft, target in post_rows_raw:
-        text = (draft.translated_text or "").strip()
+    for cp, target in post_rows_raw:
+        text = (cp.snippet or "").strip()
         snippet = (text[:140] + "…") if len(text) > 140 else text
         top_posts.append(
             {
-                "snippet": snippet or "(без текста)",
+                "snippet": snippet or ("(медиа без текста)" if cp.has_media else "(без текста)"),
                 "channel_username": target.username,
-                "published_at": published.published_at,
-                "link": f"https://t.me/{target.username}/{published.tg_message_id}",
-                "views": pstats.views if pstats else 0,
-                "forwards": pstats.forwards if pstats else 0,
-                "reactions": pstats.reactions_count if pstats else 0,
-                "comments": pstats.comments_count if pstats else 0,
+                "published_at": cp.posted_at,
+                "link": f"https://t.me/{target.username}/{cp.tg_message_id}",
+                "views": cp.views,
+                "forwards": cp.forwards,
+                "reactions": cp.reactions_count,
+                "comments": cp.comments_count,
             }
         )
     return top_posts, posts_period, posts_sort, posts_date_from, posts_date_to
@@ -387,7 +385,7 @@ async def dashboard(
 
         today_start = dt.datetime.now(dt.timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
         published_today = await session.scalar(
-            select(func.count()).where(PublishedPost.published_at >= today_start)
+            select(func.count()).where(ChannelPost.posted_at >= today_start)
         )
 
         targets_result = await session.execute(select(TargetChannel).where(TargetChannel.active.is_(True)))

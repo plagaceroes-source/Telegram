@@ -185,6 +185,33 @@ class PostForward(Base):
     )
 
 
+class ChannelPost(Base):
+    """Реальный пост нашего канала — вне зависимости от того, как он туда попал (через систему,
+    вручную, другим админом). Зеркалится из Telegram юзерботом; альбом считается одним постом.
+    По этой таблице считаются отчёты и «Топ постов»."""
+
+    __tablename__ = "channel_posts"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    target_channel_id: Mapped[int] = mapped_column(ForeignKey("target_channels.id"))
+    tg_message_id: Mapped[int] = mapped_column()  # у альбома — id первого сообщения
+    grouped_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    posted_at: Mapped[dt.datetime] = mapped_column(**_TZ_NOW)
+    snippet: Mapped[str] = mapped_column(String(300), default="")
+    has_media: Mapped[bool] = mapped_column(default=False)
+    is_system: Mapped[bool] = mapped_column(default=False)  # опубликован через апрув-систему
+    views: Mapped[int] = mapped_column(default=0)
+    forwards: Mapped[int] = mapped_column(default=0)
+    reactions_count: Mapped[int] = mapped_column(default=0)
+    comments_count: Mapped[int] = mapped_column(default=0)
+    updated_at: Mapped[dt.datetime] = mapped_column(**_TZ_NOW)
+
+    __table_args__ = (
+        UniqueConstraint("target_channel_id", "tg_message_id", name="uq_channel_posts_target_msg"),
+        Index("ix_channel_posts_posted_at", "posted_at"),
+    )
+
+
 class ChannelMention(Base):
     """Упоминание нашего канала (@username или ссылка t.me/...) в чужом сообщении —
     найдено глобальным поиском Telegram или поиском по каналам-источникам."""

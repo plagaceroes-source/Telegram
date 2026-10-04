@@ -10,11 +10,9 @@ import datetime as dt
 from sqlalchemy import func, select
 
 from news_agent.db.models import (
+    ChannelPost,
     ChannelStatsDaily,
-    DraftPost,
     InviteLink,
-    PostStats,
-    PublishedPost,
     SubscriberEvent,
     TargetChannel,
 )
@@ -43,14 +41,16 @@ async def subscriber_count_at(session, target_ids: list[int], at: dt.datetime) -
 
 
 async def published_posts_count(session, target_ids: list[int], since: dt.datetime, until: dt.datetime) -> int:
+    """Число реальных постов канала за период (альбом — один пост, вне зависимости от того,
+    опубликован пост через систему или вручную)."""
     if not target_ids:
         return 0
     return (
         await session.scalar(
             select(func.count()).where(
-                PublishedPost.target_channel_id.in_(target_ids),
-                PublishedPost.published_at >= since,
-                PublishedPost.published_at < until,
+                ChannelPost.target_channel_id.in_(target_ids),
+                ChannelPost.posted_at >= since,
+                ChannelPost.posted_at < until,
             )
         )
     ) or 0
@@ -59,38 +59,36 @@ async def published_posts_count(session, target_ids: list[int], since: dt.dateti
 async def posts_with_stats(
     session, target_ids: list[int], since: dt.datetime, until: dt.datetime
 ) -> list[dict]:
-    """Список опубликованных постов за период с их метриками, отсортированный по
-    просмотрам по убыванию."""
+    """Список постов канала за период с метриками, по просмотрам по убыванию."""
     if not target_ids:
         return []
-    post_q = (
-        select(PublishedPost, PostStats, DraftPost, TargetChannel)
-        .join(DraftPost, PublishedPost.draft_post_id == DraftPost.id)
-        .join(TargetChannel, PublishedPost.target_channel_id == TargetChannel.id)
-        .outerjoin(PostStats, PostStats.published_post_id == PublishedPost.id)
-        .where(
-            PublishedPost.target_channel_id.in_(target_ids),
-            PublishedPost.published_at >= since,
-            PublishedPost.published_at < until,
+    rows = (
+        await session.execute(
+            select(ChannelPost, TargetChannel)
+            .join(TargetChannel, ChannelPost.target_channel_id == TargetChannel.id)
+            .where(
+                ChannelPost.target_channel_id.in_(target_ids),
+                ChannelPost.posted_at >= since,
+                ChannelPost.posted_at < until,
+            )
+            .order_by(ChannelPost.views.desc())
         )
-        .order_by(func.coalesce(PostStats.views, 0).desc())
-    )
-    rows = (await session.execute(post_q)).all()
+    ).all()
 
     posts = []
-    for published, pstats, draft, target in rows:
-        text = (draft.translated_text or "").strip()
+    for cp, target in rows:
+        text = (cp.snippet or "").strip()
         snippet = (text[:80] + "…") if len(text) > 80 else text
         posts.append(
             {
-                "published_at": published.published_at,
+                "published_at": cp.posted_at,
                 "channel_username": target.username,
-                "link": f"https://t.me/{target.username}/{published.tg_message_id}",
-                "snippet": snippet or "(без текста)",
-                "views": pstats.views if pstats else 0,
-                "forwards": pstats.forwards if pstats else 0,
-                "reactions": pstats.reactions_count if pstats else 0,
-                "comments": pstats.comments_count if pstats else 0,
+                "link": f"https://t.me/{target.username}/{cp.tg_message_id}",
+                "snippet": snippet or ("(медиа без текста)" if cp.has_media else "(без текста)"),
+                "views": cp.views,
+                "forwards": cp.forwards,
+                "reactions": cp.reactions_count,
+                "comments": cp.comments_count,
             }
         )
     return posts
@@ -103,17 +101,14 @@ async def posts_totals(session, target_ids: list[int], since: dt.datetime, until
     row = (
         await session.execute(
             select(
-                func.coalesce(func.sum(PostStats.views), 0),
-                func.coalesce(func.sum(PostStats.forwards), 0),
-                func.coalesce(func.sum(PostStats.reactions_count), 0),
-                func.coalesce(func.sum(PostStats.comments_count), 0),
-            )
-            .select_from(PublishedPost)
-            .join(PostStats, PostStats.published_post_id == PublishedPost.id)
-            .where(
-                PublishedPost.target_channel_id.in_(target_ids),
-                PublishedPost.published_at >= since,
-                PublishedPost.published_at < until,
+                func.coalesce(func.sum(ChannelPost.views), 0),
+                func.coalesce(func.sum(ChannelPost.forwards), 0),
+                func.coalesce(func.sum(ChannelPost.reactions_count), 0),
+                func.coalesce(func.sum(ChannelPost.comments_count), 0),
+            ).where(
+                ChannelPost.target_channel_id.in_(target_ids),
+                ChannelPost.posted_at >= since,
+                ChannelPost.posted_at < until,
             )
         )
     ).first()

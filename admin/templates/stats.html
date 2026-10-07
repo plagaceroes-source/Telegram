@@ -51,10 +51,14 @@
   {% endif %}
 </div>
 
+<style>
+  .inv-tabs { flex-wrap: wrap; overflow-x: visible; }
+</style>
+
 <div class="card" id="invites">
   <h3>Инвайт-ссылки — приток/удержание</h3>
   {% set inv_dates = '&inv_date_from=' ~ (inv_date_from or '') ~ '&inv_date_to=' ~ (inv_date_to or '') %}
-  <div class="subtabs">
+  <div class="subtabs inv-tabs">
     <a href="/stats?sort={{ invite_sort }}&inv_period=today#invites" class="subtab-btn {{ 'active' if inv_period == 'today' }}">Сегодня</a>
     <a href="/stats?sort={{ invite_sort }}&inv_period=7#invites" class="subtab-btn {{ 'active' if inv_period == '7' }}">7 дней</a>
     <a href="/stats?sort={{ invite_sort }}&inv_period=30#invites" class="subtab-btn {{ 'active' if inv_period == '30' }}">30 дней</a>
@@ -77,11 +81,15 @@
     <button type="submit">Показать</button>
   </form>
 
-  <div class="subtabs">
+  <div class="subtabs inv-tabs">
     <a href="/stats?sort=recent&inv_period={{ inv_period }}{{ inv_dates }}#invites" class="subtab-btn {{ 'active' if invite_sort == 'recent' }}">Все</a>
     <a href="/stats?sort=joins&inv_period={{ inv_period }}{{ inv_dates }}#invites" class="subtab-btn {{ 'active' if invite_sort == 'joins' }}">Топ подписок</a>
     <a href="/stats?sort=leaves&inv_period={{ inv_period }}{{ inv_dates }}#invites" class="subtab-btn {{ 'active' if invite_sort == 'leaves' }}">Топ отписок</a>
+    <a href="/stats?sort=clicks&inv_period={{ inv_period }}{{ inv_dates }}#invites" class="subtab-btn {{ 'active' if invite_sort == 'clicks' }}">Топ переходов</a>
   </div>
+  <p class="muted" style="margin:-4px 0 12px;">
+    Telegram не сообщает, сколько раз открывали инвайт-ссылку, поэтому переходы считаются только по ссылке-счётчику: человек нажимает, мы фиксируем переход и сразу перенаправляем его на инвайт-ссылку. Боты и предпросмотры ссылок не считаются; «уник.» — разные посетители. Конверсия = подписки ÷ уникальные переходы.
+  </p>
   {% if invite_stats or direct_joins %}
   {% for row in invite_stats %}
   <div class="list-item">
@@ -90,7 +98,15 @@
       <span class="badge {{ 'off' if row.revoked else 'on' }}">{{ 'отозвана' if row.revoked else 'активна' }}</span>
     </div>
     <div class="meta">@{{ row.channel_username }}</div>
-    <div class="meta">join <span class="num-join">{{ row.joins }}</span> · leave <span class="num-leave">{{ row.leaves }}</span> · now <span class="num-now">{{ row.joins - row.leaves }}</span></div>
+    <div class="meta">переходы <span class="num-click">{{ row.clicks }}</span> (уник. {{ row.unique_clicks }}) · join <span class="num-join">{{ row.joins }}</span> · leave <span class="num-leave">{{ row.leaves }}</span> · now <span class="num-now">{{ row.joins - row.leaves }}</span>{% if row.conversion is not none %} · конв. {{ row.conversion }}%{% endif %}</div>
+    {% if not row.revoked %}
+    <div class="meta" style="margin-top:8px;">Ссылка-счётчик (её ставьте в рекламу):</div>
+    <div class="link-row">
+      <span class="link-text" data-go-path="/go/{{ row.name }}">/go/{{ row.name }}</span>
+      <button type="button" class="secondary copy-btn" onclick="copyInviteLink(this)" data-link="">Копировать</button>
+    </div>
+    {% endif %}
+    <div class="meta" style="margin-top:8px;">Исходная ссылка Telegram (переходы по ней не считаются):</div>
     <div class="link-row">
       <span class="link-text">{{ row.tg_invite_link }}</span>
       <button type="button" class="secondary copy-btn" onclick="copyInviteLink(this)" data-link="{{ row.tg_invite_link }}">Копировать</button>
@@ -119,6 +135,13 @@
     const form = document.getElementById('inv-custom-period-form');
     form.style.display = form.style.display === 'none' ? 'flex' : 'none';
   }
+
+  document.querySelectorAll('[data-go-path]').forEach((el) => {
+    const url = location.origin + el.dataset.goPath;
+    el.textContent = url;
+    const btn = el.parentElement.querySelector('button');
+    if (btn) btn.dataset.link = url;
+  });
 
   function copyInviteLink(btn) {
     const link = btn.dataset.link;

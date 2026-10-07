@@ -2,11 +2,12 @@
 from __future__ import annotations
 
 import datetime as dt
+import hashlib
 from collections import defaultdict
 from pathlib import Path
 
 from fastapi import FastAPI, Form, Request
-from fastapi.responses import RedirectResponse
+from fastapi.responses import PlainTextResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import func, select
@@ -18,6 +19,7 @@ from news_agent.db.models import (
     ChannelStatsDaily,
     DraftPost,
     InviteLink,
+    LinkClick,
     ChannelMention,
     ChannelPost,
     PostForward,
@@ -626,6 +628,63 @@ async def queue_page(request: Request):
     return templates.TemplateResponse(request, "queue.html", {"active": "queue", "drafts": rows})
 
 
+# --- Ссылка-счётчик переходов по инвайт-ссылкам ------------------------------
+
+_BOT_UA_MARKERS = (
+    "bot", "crawler", "spider", "preview", "facebookexternalhit", "slurp", "curl", "wget",
+    "python-requests", "httpx", "headless", "monitor", "uptime", "whatsapp", "skype",
+)
+_CLICK_DEDUP_SECONDS = 30
+
+
+def _is_bot_user_agent(user_agent: str) -> bool:
+    ua = user_agent.lower()
+    return not ua or any(marker in ua for marker in _BOT_UA_MARKERS)
+
+
+def _visitor_hash(request: Request) -> str:
+    forwarded = request.headers.get("x-forwarded-for", "")
+    ip = forwarded.split(",")[0].strip() or (request.client.host if request.client else "")
+    raw = f"{ip}|{request.headers.get('user-agent', '')}|{settings.admin_secret_key}"
+    return hashlib.sha256(raw.encode()).hexdigest()
+
+
+@app.api_route("/go/{name}", methods=["GET", "HEAD"])
+async def track_invite_click(name: str, request: Request):
+    """Публичная ссылка-счётчик: записывает переход и перенаправляет на инвайт-ссылку Telegram.
+    Боты и предпросмотры ссылок (Telegram, соцсети) и повторные нажатия подряд не считаются."""
+    async with session_scope() as session:
+        link = (
+            await session.execute(
+                select(InviteLink).options(selectinload(InviteLink.target_channel))
+                .where(InviteLink.name == name)
+                .order_by(InviteLink.id.desc())
+                .limit(1)
+            )
+        ).scalars().first()
+        if link is None:
+            return PlainTextResponse("Ссылка не найдена", status_code=404)
+
+        if link.revoked and link.target_channel:
+            target_url = f"https://t.me/{link.target_channel.username}"
+        else:
+            target_url = link.tg_invite_link
+
+        if request.method == "GET" and not _is_bot_user_agent(request.headers.get("user-agent", "")):
+            visitor = _visitor_hash(request)
+            recent = await session.scalar(
+                select(func.count()).where(
+                    LinkClick.invite_link_id == link.id,
+                    LinkClick.visitor_hash == visitor,
+                    LinkClick.clicked_at >= dt.datetime.now(dt.timezone.utc) - dt.timedelta(seconds=_CLICK_DEDUP_SECONDS),
+                )
+            )
+            if not recent:
+                session.add(LinkClick(invite_link_id=link.id, visitor_hash=visitor))
+
+    return RedirectResponse(target_url, status_code=302)
+
+
 # --- Статистика --------------------------------------------------------------
 
 @app.get("/stats")
@@ -647,6 +706,11 @@ async def stats_page(
         event_filters.append(SubscriberEvent.occurred_at >= inv_since)
     if inv_period != "all":
         event_filters.append(SubscriberEvent.occurred_at <= inv_until)
+    click_filters = []
+    if inv_since is not None:
+        click_filters.append(LinkClick.clicked_at >= inv_since)
+    if inv_period != "all":
+        click_filters.append(LinkClick.clicked_at <= inv_until)
 
     async with session_scope() as session:
         channels_result = await session.execute(select(TargetChannel).order_by(TargetChannel.id))
@@ -688,9 +752,18 @@ async def stats_page(
         for link_id, event_type, cnt in counts_result.all():
             counts_by_link.setdefault(link_id, {})[event_type] = cnt
 
+        clicks_result = await session.execute(
+            select(LinkClick.invite_link_id, func.count(), func.count(func.distinct(LinkClick.visitor_hash)))
+            .where(*click_filters)
+            .group_by(LinkClick.invite_link_id)
+        )
+        clicks_by_link = {link_id: (total, uniq) for link_id, total, uniq in clicks_result.all()}
+
         invite_stats = []
         for link in invite_links:
             link_counts = counts_by_link.get(link.id, {})
+            clicks, unique_clicks = clicks_by_link.get(link.id, (0, 0))
+            joins = link_counts.get("join", 0)
             invite_stats.append(
                 {
                     "id": link.id,
@@ -698,7 +771,10 @@ async def stats_page(
                     "tg_invite_link": link.tg_invite_link,
                     "channel_username": link.target_channel.username if link.target_channel else "?",
                     "source_label": link.source_label,
-                    "joins": link_counts.get("join", 0),
+                    "clicks": clicks,
+                    "unique_clicks": unique_clicks,
+                    "conversion": round(joins / unique_clicks * 100) if unique_clicks else None,
+                    "joins": joins,
                     "leaves": link_counts.get("leave", 0),
                     "revoked": link.revoked,
                 }
@@ -719,6 +795,8 @@ async def stats_page(
         invite_stats.sort(key=lambda r: r["joins"], reverse=True)
     elif sort == "leaves":
         invite_stats.sort(key=lambda r: r["leaves"], reverse=True)
+    elif sort == "clicks":
+        invite_stats.sort(key=lambda r: r["clicks"], reverse=True)
     else:
         sort = "recent"
 

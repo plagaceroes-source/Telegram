@@ -258,6 +258,20 @@ class InviteLink(Base):
     __table_args__ = (Index("ix_invite_links_name", "name"),)
 
 
+class LinkClick(Base):
+    """Переход по ссылке-счётчику /go/<name> (admin/app.py). Telegram не сообщает число открытий
+    инвайт-ссылки, поэтому считаем сами: записываем переход и перенаправляем на инвайт-ссылку."""
+
+    __tablename__ = "link_clicks"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    invite_link_id: Mapped[int] = mapped_column(ForeignKey("invite_links.id"))
+    clicked_at: Mapped[dt.datetime] = mapped_column(**_TZ_NOW)
+    visitor_hash: Mapped[str] = mapped_column(String(64))  # sha256(ip + user-agent + секрет) — для «уникальных»
+
+    __table_args__ = (Index("ix_link_clicks_link_time", "invite_link_id", "clicked_at"),)
+
+
 class SubscriberEvent(Base):
     """join/leave events, optionally attributed to an invite link (3.4.3/3.4.4)."""
 

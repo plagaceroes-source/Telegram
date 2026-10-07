@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Вход — News Agent</title>
+  <meta name="robots" content="noindex, nofollow">
+  <link rel="manifest" href="/static/manifest.json">
+  <meta name="theme-color" content="#000000">
+  <link rel="icon" href="/static/icon-192.png">
+  <link rel="apple-touch-icon" href="/static/icon-192.png">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="News Agent">
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #000; --card: #121212; --card-2: #1a1a1a;
+      --border: rgba(255,255,255,0.12); --border-strong: rgba(255,255,255,0.30);
+      --text: #fff; --muted: #9a9a9a;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; min-height: 100%; background: var(--bg); }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      color: var(--text); -webkit-font-smoothing: antialiased;
+      min-height: 100vh; display: flex; align-items: center; justify-content: center;
+      padding: max(16px, env(safe-area-inset-top)) 16px max(16px, env(safe-area-inset-bottom));
+    }
+    .box {
+      width: 100%; max-width: 380px; background: var(--card);
+      border: 1px solid var(--border); border-radius: 18px; padding: 24px;
+    }
+    h1 { font-size: 20px; margin: 0 0 6px; letter-spacing: -0.02em; }
+    p { color: var(--muted); font-size: 13.5px; margin: 0 0 18px; }
+    input[type=password] {
+      width: 100%; padding: 12px 14px; border-radius: 12px; border: 1px solid var(--border);
+      background: var(--card-2); color: var(--text); font-size: 16px; font-family: inherit;
+    }
+    input[type=password]:focus { outline: none; border-color: var(--border-strong); }
+    .hidden-user { position: absolute; left: -9999px; width: 1px; height: 1px; opacity: 0; }
+    button {
+      width: 100%; margin-top: 14px; padding: 12px 18px; border-radius: 999px; border: 0;
+      background: #fff; color: #000; font-size: 15px; font-weight: 600; font-family: inherit; cursor: pointer;
+    }
+    .error {
+      border: 1px dashed var(--border-strong); border-radius: 12px; padding: 10px 12px;
+      font-size: 13.5px; margin-bottom: 14px;
+    }
+  </style>
+</head>
+<body>
+  <main class="box">
+    <h1>News Agent</h1>
+    {% if not configured %}
+    <div class="error">Пароль не задан: в переменных окружения нужно указать ADMIN_PASSWORD. Пока он не задан, вход закрыт для всех.</div>
+    {% else %}
+    <p>Введите пароль, чтобы открыть панель.</p>
+    {% if error %}<div class="error">{{ error }}</div>{% endif %}
+    <form method="post" action="/login">
+      <input type="hidden" name="next" value="{{ next_url }}">
+      <input class="hidden-user" type="text" name="username" value="admin" autocomplete="username" tabindex="-1" aria-hidden="true">
+      <input type="password" name="password" placeholder="Пароль" autocomplete="current-password" required autofocus>
+      <button type="submit">Войти</button>
+    </form>
+    {% endif %}
+  </main>
+</body>
+</html>

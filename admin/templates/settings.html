@@ -41,4 +41,12 @@
     сейчас никому не отправляются.</p>
   {% endif %}
 </div>
+
+<div class="card">
+  <h3>Вход в админку</h3>
+  <p class="muted">Пароль задаётся переменной ADMIN_PASSWORD на хостинге. После его смены все устройства будут разлогинены.</p>
+  <form method="post" action="/logout">
+    <button type="submit" class="secondary">Выйти</button>
+  </form>
+</div>
 {% endblock %}

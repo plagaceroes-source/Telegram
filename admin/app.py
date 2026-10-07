@@ -1,6 +1,7 @@
 """Веб-админка (ТЗ 2.5): FastAPI + Jinja2, простой CRUD источников/каналов + статистика."""
 from __future__ import annotations
 
+import asyncio
 import datetime as dt
 import hashlib
 from collections import defaultdict
@@ -13,6 +14,7 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy import func, select
 from sqlalchemy.orm import selectinload
 
+from admin import auth
 from news_agent.bot.session import build_bot
 from news_agent.config import settings
 from news_agent.db.models import (
@@ -48,6 +50,75 @@ async def no_cache(request: Request, call_next):
     if not request.url.path.startswith("/static/"):
         response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
         response.headers["Pragma"] = "no-cache"
+    return response
+
+
+@app.middleware("http")
+async def require_login(request: Request, call_next):
+    # Добавлен после no_cache, поэтому выполняется раньше него: ответы-редиректы
+    # сами помечаем no-store, чтобы iOS не кэшировал страницу входа вместо контента.
+    if auth.is_public_path(request.url.path) or auth.is_authenticated(request):
+        return await call_next(request)
+    response = RedirectResponse(auth.login_redirect_url(request), status_code=303)
+    response.headers["Cache-Control"] = "no-store"
+    return response
+
+
+def _login_page(request: Request, *, next_url: str, error: str | None = None, status_code: int = 200):
+    return templates.TemplateResponse(
+        request,
+        "login.html",
+        {
+            "next_url": next_url,
+            "error": error,
+            "configured": bool(settings.admin_password),
+        },
+        status_code=status_code,
+    )
+
+
+@app.get("/login")
+async def login_form(request: Request, next: str = "/"):
+    if auth.is_authenticated(request):
+        return RedirectResponse(auth.safe_next(next), status_code=303)
+    return _login_page(request, next_url=auth.safe_next(next))
+
+
+@app.post("/login")
+async def login_submit(request: Request, password: str = Form(""), next: str = Form("/")):
+    next_url = auth.safe_next(next)
+    if not settings.admin_password:
+        return _login_page(request, next_url=next_url, status_code=503)
+    ip = auth.client_ip(request)
+    if auth.is_locked_out(ip):
+        return _login_page(
+            request,
+            next_url=next_url,
+            error="Слишком много неверных попыток. Попробуйте через 15 минут.",
+            status_code=429,
+        )
+    if not auth.check_password(password):
+        auth.register_failure(ip)
+        await asyncio.sleep(1)
+        return _login_page(request, next_url=next_url, error="Неверный пароль.", status_code=401)
+    auth.clear_failures(ip)
+    response = RedirectResponse(next_url, status_code=303)
+    response.set_cookie(
+        auth.COOKIE_NAME,
+        auth.make_session_token(),
+        max_age=auth.SESSION_TTL,
+        httponly=True,
+        samesite="lax",
+        secure=auth.is_https(request),
+        path="/",
+    )
+    return response
+
+
+@app.post("/logout")
+async def logout():
+    response = RedirectResponse("/login", status_code=303)
+    response.delete_cookie(auth.COOKIE_NAME, path="/")
     return response
 
 

@@ -83,6 +83,8 @@ class Settings:
     sessions_path: str = field(default_factory=lambda: os.getenv("SESSIONS_PATH", "./storage/sessions"))
 
     admin_secret_key: str = field(default_factory=lambda: os.getenv("ADMIN_SECRET_KEY", "change-me"))
+    # Пароль входа в админку. Пустой = вход закрыт для всех (fail-closed), а не открыт.
+    admin_password: str = field(default_factory=lambda: os.getenv("ADMIN_PASSWORD", ""))
     # Render/Railway/Heroku и т.п. сами назначают порт через PORT — веб-сервис обязан
     # слушать именно его. ADMIN_PORT остаётся как дефолт для локального запуска.
     admin_port: int = field(default_factory=lambda: _int("PORT", _int("ADMIN_PORT", 8000)))

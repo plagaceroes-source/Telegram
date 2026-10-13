@@ -12,7 +12,7 @@ from aiogram import Dispatcher, Router
 from aiogram.types import ChatMemberUpdated
 from sqlalchemy import select
 
-from news_agent.db.models import InviteLink, SubscriberEvent, TargetChannel, utcnow
+from news_agent.db.models import InviteLink, JoinProfile, SubscriberEvent, TargetChannel, utcnow
 from news_agent.db.session import session_scope
 
 logger = logging.getLogger(__name__)
@@ -43,12 +43,12 @@ async def on_chat_member_update(update: ChatMemberUpdated) -> None:
     left = old_status in _MEMBER_STATUSES and new_status in _LEFT_STATUSES
 
     if joined:
-        await _record_join(target.id, user_id, update.invite_link)
+        await _record_join(target.id, user_id, update.invite_link, update.new_chat_member.user, update.from_user)
     elif left:
         await _record_leave(target.id, user_id)
 
 
-async def _record_join(target_channel_id: int, user_id: int, tg_invite_link) -> None:
+async def _record_join(target_channel_id: int, user_id: int, tg_invite_link, user=None, actor=None) -> None:
     invite_link_id = None
     is_direct = True
 
@@ -67,20 +67,45 @@ async def _record_join(target_channel_id: int, user_id: int, tg_invite_link) -> 
                 is_direct = False
 
     async with session_scope() as session:
-        session.add(
-            SubscriberEvent(
-                target_channel_id=target_channel_id,
-                tg_user_id=user_id,
-                event_type="join",
-                invite_link_id=invite_link_id,
-                is_direct=is_direct,
-                occurred_at=utcnow(),
-            )
+        event = SubscriberEvent(
+            target_channel_id=target_channel_id,
+            tg_user_id=user_id,
+            event_type="join",
+            invite_link_id=invite_link_id,
+            is_direct=is_direct,
+            occurred_at=utcnow(),
         )
+        session.add(event)
+        await session.flush()
+        event_id = event.id
+
+    if user is not None:
+        await _record_join_profile(event_id, user_id, user, actor)
     logger.info(
         "Канал %s: join user=%s invite_link_id=%s (direct=%s)",
         target_channel_id, user_id, invite_link_id, is_direct,
     )
+
+
+async def _record_join_profile(event_id: int, user_id: int, user, actor) -> None:
+    """Публичные признаки аккаунта для оценки качества аудитории блогеров.
+    Отдельной транзакцией: сбой здесь не должен терять само событие вступления."""
+    language = getattr(user, "language_code", None)
+    if not language and actor is not None and actor.id == user_id:
+        language = getattr(actor, "language_code", None)  # при вступлении по ссылке актор — сам вступивший
+    try:
+        async with session_scope() as session:
+            session.add(
+                JoinProfile(
+                    subscriber_event_id=event_id,
+                    tg_user_id=user_id,
+                    has_username=bool(getattr(user, "username", None)),
+                    is_premium=bool(getattr(user, "is_premium", False)),
+                    language_code=(language or "")[:16],
+                )
+            )
+    except Exception:
+        logger.exception("Не удалось сохранить профиль вступившего user=%s", user_id)
 
 
 async def _record_leave(target_channel_id: int, user_id: int) -> None:

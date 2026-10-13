@@ -1,0 +1,223 @@
+{% extends "base.html" %}
+{% block title %}Блогеры — News Agent{% endblock %}
+{% macro pct(v) %}{{ ((v * 100) | round | int ~ '%') if v is not none else '—' }}{% endmacro %}
+{% block content %}
+<style>
+  .v-badge { display:inline-flex; align-items:center; padding:3px 10px; border-radius:var(--radius-pill); font-size:11.5px; font-weight:600; border:1px solid; white-space:nowrap; }
+  .v-ok { color:#34c759; border-color:#34c759; }
+  .v-check { color:#ffd60a; border-color:#ffd60a; }
+  .v-suspicious { color:#ff453a; border-color:#ff453a; }
+  .v-insufficient { color:var(--faint); border-color:var(--border-strong); }
+  .rank { color:var(--faint); font-weight:600; margin-right:6px; }
+  .score { font-weight:700; font-size:20px; letter-spacing:-0.02em; }
+  .metrics { display:grid; grid-template-columns:repeat(3, 1fr); gap:8px; margin-top:12px; }
+  .metrics > div { background:var(--card-2); border-radius:var(--radius-md); padding:8px 10px; display:flex; flex-direction:column; justify-content:space-between; gap:6px; }
+  .metrics .k { color:var(--muted); font-size:11px; }
+  .metrics .v { font-size:16px; font-weight:600; margin-top:2px; }
+  .signals { margin:10px 0 0; padding:0; list-style:none; }
+  .signals li { font-size:12.5px; color:var(--text); padding:6px 10px; border:1px dashed var(--border-strong); border-radius:var(--radius-md); margin-bottom:6px; }
+  .platform-row { margin-top:12px; padding-top:10px; border-top:1px solid var(--border); }
+  .platform-row .head { display:flex; justify-content:space-between; gap:8px; align-items:baseline; }
+  .inv-tabs { flex-wrap: wrap; overflow-x: visible; }
+  details summary { cursor:pointer; color:var(--muted); font-size:13px; }
+  details p { color:var(--muted); font-size:12.5px; line-height:1.55; margin:8px 0 0; }
+</style>
+
+<h1>Блогеры</h1>
+<p class="muted" style="margin-top:-10px">
+  Заносите блогеров и создавайте каждому ссылку на каждую площадку — здесь же рейтинг и результативность.
+  Оценка качества косвенная: система ставит флаги для проверки, но никого не дисквалифицирует сама.
+</p>
+
+{% if error %}
+<div class="empty-state" style="border:1px dashed var(--border-strong); border-radius:var(--radius-md); margin-bottom:12px; color:var(--text);">⚠ {{ error }}</div>
+{% endif %}
+
+<div class="card">
+  <h3>Добавить блогера</h3>
+  <form method="post" action="/bloggers" style="display:flex; gap:8px;">
+    <input name="name" maxlength="128" placeholder="Имя или ник блогера" required style="flex:1; min-width:0;">
+    <button type="submit">Добавить</button>
+  </form>
+</div>
+
+<div class="card">
+  <div class="subtabs inv-tabs" style="margin-bottom:12px;">
+    <a href="/bloggers?period=today" class="subtab-btn {{ 'active' if period == 'today' }}">Сегодня</a>
+    <a href="/bloggers?period=7" class="subtab-btn {{ 'active' if period == '7' }}">7 дней</a>
+    <a href="/bloggers?period=30" class="subtab-btn {{ 'active' if period == '30' }}">30 дней</a>
+    <a href="/bloggers?period=90" class="subtab-btn {{ 'active' if period == '90' }}">90 дней</a>
+    <a href="/bloggers?period=all" class="subtab-btn {{ 'active' if period == 'all' }}">Всё время</a>
+    <button type="button" class="subtab-btn {{ 'active' if period == 'custom' }}" onclick="toggleCustomPeriod()">Период</button>
+  </div>
+  <form method="get" action="/bloggers" id="custom-period-form" style="display:{{ 'flex' if period == 'custom' else 'none' }}; gap:10px; align-items:flex-end; flex-wrap:wrap; margin-bottom:12px;">
+    <input type="hidden" name="period" value="custom">
+    <div style="min-width:140px;"><label style="font-size:11.5px; margin-bottom:4px;">С какой даты</label><input type="date" name="date_from" value="{{ date_from or '' }}" required></div>
+    <div style="min-width:140px;"><label style="font-size:11.5px; margin-bottom:4px;">По какую</label><input type="date" name="date_to" value="{{ date_to or '' }}" required></div>
+    <button type="submit">Показать</button>
+  </form>
+
+  {% set b = report.baseline %}
+  <p class="muted" style="margin:0;">
+    {% if b.kind == 'direct' %}Нормой считаем вступления <b>без ссылки</b> (удержание {{ pct(b.metrics.retention) }}).
+    {% elif b.kind == 'pooled' %}Прямых вступлений мало, поэтому нормой считаем <b>всех блогеров вместе</b>.
+    {% else %}Пока слишком мало данных, чтобы сравнивать с нормой — оценка и часть флагов появятся позже.{% endif %}
+    Рейтинг — по числу «зачтённых»: тех, кто остался в канале не меньше {{ report.rules.retention_days }} дн.
+  </p>
+</div>
+
+{% set active_list = report.bloggers | selectattr('active') | list %}
+{% set archived = report.bloggers | rejectattr('active') | list %}
+
+{% macro blogger_card(r, dimmed=False) %}
+{% set m = r.metrics %}
+<div class="list-item" {% if dimmed %}style="opacity:.6"{% endif %}>
+  <div class="row">
+    <span class="title">{% if not dimmed %}<span class="rank">#{{ r.rank }}</span>{% endif %}{{ r.name }}</span>
+    <span style="display:flex; align-items:center; gap:10px;">
+      {% if r.score is not none %}<span class="score">{{ r.score }}</span>{% endif %}
+      <span class="v-badge v-{{ r.verdict }}">{{ {'ok': 'Ок', 'check': 'Проверить', 'suspicious': 'Подозрительно', 'insufficient': 'Мало данных'}[r.verdict] }}</span>
+    </span>
+  </div>
+
+  <div class="metrics">
+    <div><div class="k">Вступило</div><div class="v num-join">{{ m.n }}</div></div>
+    <div><div class="k">Ушло</div><div class="v num-leave">{{ m.left }}</div></div>
+    <div><div class="k">Сейчас в канале</div><div class="v num-now">{{ m.n - m.left }}</div></div>
+    <div><div class="k">Зачтено (≥{{ report.rules.retention_days }} дн.)</div><div class="v">{{ m.counted }}</div></div>
+    <div><div class="k">Удержание</div><div class="v">{{ pct(m.retention) }}</div></div>
+    <div><div class="k">Ушли за 24 ч</div><div class="v">{{ pct(m.quick_leave_rate) }}</div></div>
+  </div>
+
+  {% if r.signals %}
+  <ul class="signals">{% for s in r.signals %}<li>⚠ {{ s.text }}</li>{% endfor %}</ul>
+  {% endif %}
+
+  {% for ls in r.links %}
+  <div class="platform-row">
+    <div class="head">
+      <span style="font-weight:600;">{{ platforms.get(ls.info.platform, ls.info.platform) }}</span>
+      <span class="meta" style="margin:0;">
+        join <span class="num-join">{{ ls.joins }}</span> · leave <span class="num-leave">{{ ls.leaves }}</span> · now <span class="num-now">{{ ls.active }}</span>
+        {% if ls.clicks_unique %} · переходов {{ ls.clicks_unique }} · конв. {{ pct(ls.conversion) }}{% endif %}
+        {% if ls.info.revoked %} · <span class="faint">отозвана</span>{% endif %}
+      </span>
+    </div>
+    {% if not ls.info.revoked %}
+    <div class="meta" style="margin-top:6px;">Ссылка-счётчик (её ставьте блогеру):</div>
+    <div class="link-row">
+      <span class="link-text" data-go-path="/go/{{ ls.info.name }}">/go/{{ ls.info.name }}</span>
+      <button type="button" class="secondary copy-btn" onclick="copyInviteLink(this)" data-link="">Копировать</button>
+    </div>
+    <div class="meta" style="margin-top:6px;">Прямая ссылка Telegram (переходы по ней не считаются):</div>
+    <div class="link-row">
+      <span class="link-text">{{ ls.info.url }}</span>
+      <button type="button" class="secondary copy-btn" onclick="copyInviteLink(this)" data-link="{{ ls.info.url }}">Копировать</button>
+    </div>
+    <div class="actions" style="margin-top:8px;">
+      <form method="post" action="/bloggers/links/{{ ls.info.link_id }}/revoke" onsubmit="return confirm('Отозвать ссылку? Новые люди по ней вступить не смогут.')">
+        <button type="submit" class="danger">Отозвать</button>
+      </form>
+    </div>
+    {% endif %}
+  </div>
+  {% endfor %}
+
+  {% if not dimmed %}
+  <form method="post" action="/bloggers/{{ r.blogger_id }}/links" class="platform-row" style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+    <select name="platform" style="flex:1; min-width:120px;">
+      {% for key, label in platforms.items() %}<option value="{{ key }}">{{ label }}</option>{% endfor %}
+    </select>
+    {% if channels | length == 1 %}
+    <input type="hidden" name="target_channel_id" value="{{ channels[0].id }}">
+    {% elif channels %}
+    <select name="target_channel_id" style="flex:1; min-width:120px;">
+      {% for ch in channels %}<option value="{{ ch.id }}">@{{ ch.username }}</option>{% endfor %}
+    </select>
+    {% endif %}
+    <button type="submit" {% if not channels %}disabled{% endif %}>+ Ссылка</button>
+  </form>
+  {% endif %}
+
+  <div class="actions">
+    <form method="post" action="/bloggers/{{ r.blogger_id }}/toggle">
+      <button type="submit" class="secondary">{{ 'Вернуть из архива' if dimmed else 'В архив' }}</button>
+    </form>
+  </div>
+</div>
+{% endmacro %}
+
+{% if active_list %}
+{% for r in active_list %}{{ blogger_card(r) }}{% endfor %}
+{% else %}
+<div class="empty-state">Блогеров пока нет. Добавьте первого выше, затем создайте ему ссылку на площадку.</div>
+{% endif %}
+
+{% if archived %}
+<h3 style="margin-top:24px;">Архив</h3>
+{% for r in archived %}{{ blogger_card(r, dimmed=True) }}{% endfor %}
+{% endif %}
+
+<div class="card">
+  <details>
+    <summary>Как считается оценка и флаги</summary>
+    <p>
+      <b>Зачтено</b> — вступившие, которые не ушли в первые {{ report.rules.retention_days }} дн. По ним строится рейтинг.
+      <b>Оценка 0–100</b> складывается из удержания (50%), быстрых уходов за 24 ч (15%), профиля аккаунтов (20%) и всплесков (15%);
+      если данных на какую-то часть не хватает, её вес перераспределяется. Оценка появляется от {{ report.rules.min_sample }} вступлений.
+    </p>
+    <p>
+      <b>Всплеск</b> — {{ report.rules.spike_min_joins }}+ вступлений за {{ report.rules.spike_window_min }} мин, если это ≥ {{ (report.rules.spike_day_share * 100) | round | int }}% вступлений блогера за день.
+      Сам по себе всплеск ещё не накрутка (удачный пост тоже его даёт) — смотрите, что с этими людьми дальше.
+    </p>
+    <p>
+      <b>Профиль</b> — доля «свежих» аккаунтов (по номеру id), без username и с нетипичным языком сравниваются с нормой;
+      отклонение от {{ (report.rules.profile_deviation * 100) | round | int }} п.п. даёт флаг. Данные профиля собираются только с момента включения, по старым вступлениям их нет.
+    </p>
+    <p>
+      <b>Флаги:</b> один — «Проверить», два и больше — «Подозрительно». Накрутку живыми людьми за вознаграждение отличить нельзя:
+      против неё помогает именно правило «зачтено, если остался N дней». Пороги меняются переменными BLOGGER_* на сервисе admin.
+    </p>
+  </details>
+</div>
+
+<script>
+  function toggleCustomPeriod() {
+    const form = document.getElementById('custom-period-form');
+    form.style.display = form.style.display === 'none' ? 'flex' : 'none';
+  }
+
+  document.querySelectorAll('[data-go-path]').forEach((el) => {
+    const url = location.origin + el.dataset.goPath;
+    el.textContent = url;
+    const btn = el.parentElement.querySelector('button');
+    if (btn) btn.dataset.link = url;
+  });
+
+  function copyInviteLink(btn) {
+    const link = btn.dataset.link;
+    const done = () => {
+      const original = btn.textContent;
+      btn.textContent = 'Скопировано';
+      setTimeout(() => { btn.textContent = original; }, 1500);
+    };
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(link).then(done).catch(() => fallbackCopy(link, done));
+    } else {
+      fallbackCopy(link, done);
+    }
+  }
+
+  function fallbackCopy(text, done) {
+    const el = document.createElement('textarea');
+    el.value = text;
+    el.style.position = 'fixed';
+    el.style.opacity = '0';
+    document.body.appendChild(el);
+    el.focus();
+    el.select();
+    try { document.execCommand('copy'); done(); } catch (e) {}
+    document.body.removeChild(el);
+  }
+</script>
+{% endblock %}

@@ -18,6 +18,8 @@ from admin import auth
 from news_agent.bot.session import build_bot
 from news_agent.config import settings
 from news_agent.db.models import (
+    Blogger,
+    BloggerLink,
     ChannelStatsDaily,
     DraftPost,
     InviteLink,
@@ -33,6 +35,7 @@ from news_agent.db.models import (
     UserbotAccount,
 )
 from news_agent.db.session import init_db, session_scope
+from news_agent.stats import bloggers as blogger_stats
 
 templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
 
@@ -929,12 +932,11 @@ async def create_invite_link(
     return RedirectResponse("/stats", status_code=303)
 
 
-@app.post("/invite_links/{link_id}/revoke")
-async def revoke_invite_link(link_id: int):
+async def _revoke_invite(link_id: int) -> None:
     async with session_scope() as session:
         link = await session.get(InviteLink, link_id)
         if link is None:
-            return RedirectResponse("/stats", status_code=303)
+            return
         target = await session.get(TargetChannel, link.target_channel_id)
         chat_id = target.tg_chat_id or f"@{target.username}"
         invite_link_value = link.tg_invite_link
@@ -951,7 +953,130 @@ async def revoke_invite_link(link_id: int):
         link = await session.get(InviteLink, link_id)
         if link:
             link.revoked = True
+
+
+@app.post("/invite_links/{link_id}/revoke")
+async def revoke_invite_link(link_id: int):
+    await _revoke_invite(link_id)
     return RedirectResponse("/stats", status_code=303)
+
+
+# --- Блогеры -----------------------------------------------------------------
+
+PLATFORMS = {
+    "instagram": "Instagram",
+    "tiktok": "TikTok",
+    "youtube": "YouTube",
+    "telegram": "Telegram",
+    "vk": "VK",
+    "other": "Другое",
+}
+
+
+def _bloggers_redirect(error: str | None = None) -> RedirectResponse:
+    url = "/bloggers"
+    if error:
+        url += "?error=" + error.replace(" ", "+")
+    return RedirectResponse(url, status_code=303)
+
+
+@app.get("/bloggers")
+async def bloggers_page(
+    request: Request, period: str = "all", date_from: str | None = None, date_to: str | None = None
+):
+    if period not in ("today", "7", "30", "90", "all", "custom"):
+        period = "all"
+    period, since, until, date_from, date_to = _resolve_period(period, date_from, date_to)
+    async with session_scope() as session:
+        report = await blogger_stats.load_report(session, since, None if period == "all" else until)
+        channels = list(
+            (
+                await session.execute(
+                    select(TargetChannel).where(TargetChannel.active.is_(True)).order_by(TargetChannel.id)
+                )
+            ).scalars()
+        )
+    return templates.TemplateResponse(
+        request,
+        "bloggers.html",
+        {
+            "active": "bloggers",
+            "report": report,
+            "platforms": PLATFORMS,
+            "channels": channels,
+            "period": period,
+            "date_from": date_from,
+            "date_to": date_to,
+            "error": request.query_params.get("error"),
+        },
+    )
+
+
+@app.post("/bloggers")
+async def create_blogger(name: str = Form(...)):
+    name = name.strip()[:128]
+    if not name:
+        return _bloggers_redirect("Введите имя блогера")
+    async with session_scope() as session:
+        if await session.scalar(select(func.count()).select_from(Blogger).where(Blogger.name == name)):
+            return _bloggers_redirect("Блогер с таким именем уже есть")
+        session.add(Blogger(name=name))
+    return _bloggers_redirect()
+
+
+@app.post("/bloggers/{blogger_id}/toggle")
+async def toggle_blogger(blogger_id: int):
+    async with session_scope() as session:
+        blogger = await session.get(Blogger, blogger_id)
+        if blogger:
+            blogger.active = not blogger.active
+    return _bloggers_redirect()
+
+
+@app.post("/bloggers/{blogger_id}/links")
+async def create_blogger_link(blogger_id: int, platform: str = Form("other"), target_channel_id: int = Form(...)):
+    if platform not in PLATFORMS:
+        platform = "other"
+    async with session_scope() as session:
+        blogger = await session.get(Blogger, blogger_id)
+        target = await session.get(TargetChannel, target_channel_id)
+        existing = await session.scalar(
+            select(func.count()).select_from(BloggerLink).where(
+                BloggerLink.blogger_id == blogger_id, BloggerLink.platform == platform
+            )
+        )
+    if blogger is None or target is None:
+        return _bloggers_redirect("Блогер или канал не найден")
+
+    # Имя должно быть уникальным в канале: по нему вступление привязывается к ссылке.
+    name = f"bl{blogger_id}_{platform}_{(existing or 0) + 1}"[:32]
+    bot = build_bot(settings.bot_token)
+    try:
+        tg_link = await bot.create_chat_invite_link(chat_id=target.tg_chat_id or f"@{target.username}", name=name)
+    except Exception:
+        return _bloggers_redirect("Не удалось создать ссылку — бот должен быть админом канала")
+    finally:
+        await bot.session.close()
+
+    async with session_scope() as session:
+        invite = InviteLink(
+            target_channel_id=target_channel_id,
+            name=name,
+            tg_invite_link=tg_link.invite_link,
+            source_label=f"{blogger.name} / {PLATFORMS[platform]}",
+            campaign_tag="blogger",
+            created_by="admin-panel",
+        )
+        session.add(invite)
+        await session.flush()
+        session.add(BloggerLink(blogger_id=blogger_id, invite_link_id=invite.id, platform=platform))
+    return _bloggers_redirect()
+
+
+@app.post("/bloggers/links/{link_id}/revoke")
+async def revoke_blogger_link(link_id: int):
+    await _revoke_invite(link_id)
+    return _bloggers_redirect()
 
 
 # --- Настройки (read-only) ---------------------------------------------------

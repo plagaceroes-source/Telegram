@@ -279,7 +279,8 @@ class SubscriberEvent(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     target_channel_id: Mapped[int] = mapped_column(ForeignKey("target_channels.id"))
-    tg_user_id: Mapped[int] = mapped_column()
+    # BIGINT: id новых аккаунтов Telegram давно превышают int32 (иначе вставка падает на Postgres).
+    tg_user_id: Mapped[int] = mapped_column(BigInteger)
     event_type: Mapped[str] = mapped_column(String(8))  # join / leave
     invite_link_id: Mapped[int | None] = mapped_column(ForeignKey("invite_links.id"), nullable=True)
     is_direct: Mapped[bool] = mapped_column(default=False)  # joined w/o a tracked invite link
@@ -360,3 +361,47 @@ class NewsSubmission(Base):
     draft_post: Mapped[DraftPost] = relationship()
 
     __table_args__ = (Index("ix_news_submissions_user", "tg_user_id"),)
+
+
+# --- блогеры: кто и сколько «живой» аудитории привёл в канал -------------------
+
+class Blogger(Base):
+    """Блогер, который приводит аудиторию в канал. Площадок может быть несколько —
+    по отдельной ссылке на каждую (BloggerLink)."""
+
+    __tablename__ = "bloggers"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(128), unique=True)
+    active: Mapped[bool] = mapped_column(default=True)
+    created_at: Mapped[dt.datetime] = mapped_column(**_TZ_NOW)
+
+    links: Mapped[list["BloggerLink"]] = relationship(back_populates="blogger")
+
+
+class BloggerLink(Base):
+    """Именная инвайт-ссылка блогера на конкретной площадке."""
+
+    __tablename__ = "blogger_links"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    blogger_id: Mapped[int] = mapped_column(ForeignKey("bloggers.id"))
+    invite_link_id: Mapped[int] = mapped_column(ForeignKey("invite_links.id"), unique=True)
+    platform: Mapped[str] = mapped_column(String(32), default="")
+
+    blogger: Mapped[Blogger] = relationship(back_populates="links")
+    invite_link: Mapped[InviteLink] = relationship()
+
+
+class JoinProfile(Base):
+    """Публичные признаки аккаунта в момент вступления — для оценки качества аудитории блогеров.
+    Telegram отдаёт боту только эти поля; данных до включения сбора нет."""
+
+    __tablename__ = "join_profiles"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    subscriber_event_id: Mapped[int] = mapped_column(ForeignKey("subscriber_events.id"), unique=True)
+    tg_user_id: Mapped[int] = mapped_column(BigInteger)
+    has_username: Mapped[bool] = mapped_column(default=False)
+    is_premium: Mapped[bool] = mapped_column(default=False)
+    language_code: Mapped[str] = mapped_column(String(16), default="")

@@ -98,6 +98,14 @@ class Settings:
     # Soft cap on sources per userbot account (Section 2.1: ориентир 20-40).
     max_sources_per_account: int = field(default_factory=lambda: _int("MAX_SOURCES_PER_ACCOUNT", 35))
 
+    # Правила оценки качества аудитории в блогерах (раздел «Блогеры»).
+    blogger_retention_days: int = field(default_factory=lambda: _int("BLOGGER_RETENTION_DAYS", 7))
+    blogger_min_sample: int = field(default_factory=lambda: _int("BLOGGER_MIN_SAMPLE", 30))
+    blogger_spike_window_min: int = field(default_factory=lambda: _int("BLOGGER_SPIKE_WINDOW_MIN", 10))
+    blogger_spike_min_joins: int = field(default_factory=lambda: _int("BLOGGER_SPIKE_MIN_JOINS", 15))
+    blogger_spike_day_share: float = field(default_factory=lambda: float(os.getenv("BLOGGER_SPIKE_DAY_SHARE") or 0.4))
+    blogger_profile_deviation: float = field(default_factory=lambda: float(os.getenv("BLOGGER_PROFILE_DEVIATION") or 0.3))
+
     # Через сколько секунд удалять предупреждение о force-sub (чтобы не засорять чат).
     force_sub_warning_ttl: int = field(default_factory=lambda: _int("FORCE_SUB_WARNING_TTL", 30))
 

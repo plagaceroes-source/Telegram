@@ -14,6 +14,7 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy import func, select
 from sqlalchemy.orm import selectinload
 
+from admin import analytics as analytics_view
 from admin import auth
 from news_agent.bot.session import build_bot
 from news_agent.config import settings
@@ -441,6 +442,7 @@ async def dashboard(
     posts_date_to: str | None = None,
     fw_period: str = "30",
     mn_period: str = "30",
+    an_period: str = "30",
 ):
     period, since, until, date_from, date_to = _resolve_period(period, date_from, date_to)
     granularity = _granularity_for(since, until)
@@ -505,6 +507,17 @@ async def dashboard(
         forward_groups, fw_period, forwards_total = await _forward_stats(session, fw_period)
         mention_groups, mn_period, mentions_total = await _mention_stats(session, mn_period)
 
+        post_metrics = await analytics_view.post_metrics(session, an_period, subscribers_total)
+        tg_analytics = await analytics_view.telegram_analytics(session)
+        citation_forwards, _, citation_forwards_total = await _forward_stats(session, "30")
+        citation_mentions, _, citation_mentions_total = await _mention_stats(session, "30")
+        citation = {
+            "mentions": citation_mentions_total,
+            "mention_chats": len(citation_mentions),
+            "forwards": citation_forwards_total,
+            "forward_chats": len(citation_forwards),
+        }
+
     growth_first = growth_series[0]["total"] if growth_series else None
     growth_last = growth_series[-1]["total"] if growth_series else None
     growth_pct = ((growth_last - growth_first) / growth_first * 100) if growth_first else None
@@ -552,6 +565,9 @@ async def dashboard(
             "mention_groups": mention_groups,
             "mn_period": mn_period,
             "mentions_total": mentions_total,
+            "post_metrics": post_metrics,
+            "tg_analytics": tg_analytics,
+            "citation": citation,
         },
     )
 

@@ -30,11 +30,13 @@
 </div>
 
 <style>
+  .an-h { margin: 22px 0 8px; font-size: 14px; font-weight: 600; }
   .tab-pane { display: none; }
   html[data-tab="subscriber-stats"] #subscriber-stats,
   html[data-tab="top-posts"] #top-posts,
   html[data-tab="forwards"] #forwards,
   html[data-tab="mentions"] #mentions,
+  html[data-tab="analytics"] #analytics,
   html[data-tab="accounts"] #accounts { display: block; }
   .dash-tabs { flex-wrap: wrap; overflow-x: visible; }
   .dash-tabs .subtab-btn { padding: 8px 13px; }
@@ -45,13 +47,14 @@
   <button type="button" class="subtab-btn" data-tab-btn="top-posts" onclick="showDashTab('top-posts')">Посты</button>
   <button type="button" class="subtab-btn" data-tab-btn="forwards" onclick="showDashTab('forwards')">Репосты</button>
   <button type="button" class="subtab-btn" data-tab-btn="mentions" onclick="showDashTab('mentions')">Упоминания</button>
+  <button type="button" class="subtab-btn" data-tab-btn="analytics" onclick="showDashTab('analytics')">Аналитика</button>
   <button type="button" class="subtab-btn" data-tab-btn="accounts" onclick="showDashTab('accounts')">Юзерботы</button>
 </div>
 <script>
   // Активная вкладка хранится в #hash (совпадает с id блока), поэтому ссылки смены периода/сортировки
   // с якорями вида /?period=7#subscriber-stats после перезагрузки остаются на своей вкладке.
   (function () {
-    var TABS = ['subscriber-stats', 'top-posts', 'forwards', 'mentions', 'accounts'];
+    var TABS = ['subscriber-stats', 'top-posts', 'forwards', 'mentions', 'analytics', 'accounts'];
     function current() {
       var h = location.hash.slice(1);
       return TABS.indexOf(h) >= 0 ? h : 'subscriber-stats';
@@ -292,6 +295,151 @@
   {% endif %}
 </div>
 
+<div class="card tab-pane" id="analytics">
+  {% set pm = post_metrics %}
+  <h3>Аналитика канала</h3>
+  <div class="subtabs">
+    <a href="/?an_period=7#analytics" class="subtab-btn {{ 'active' if pm.period == '7' }}">7 дней</a>
+    <a href="/?an_period=30#analytics" class="subtab-btn {{ 'active' if pm.period == '30' }}">30 дней</a>
+    <a href="/?an_period=90#analytics" class="subtab-btn {{ 'active' if pm.period == '90' }}">90 дней</a>
+    <a href="/?an_period=all#analytics" class="subtab-btn {{ 'active' if pm.period == 'all' }}">Всё время</a>
+  </div>
+
+  <div class="stat-grid">
+    <div class="stat-card">
+      <div class="label">Средний охват поста</div>
+      <div class="value">{{ pm.avg_reach }}</div>
+      <div class="sub">постов за период: {{ pm.posts }}</div>
+    </div>
+    <div class="stat-card">
+      <div class="label">ERR (охват ÷ подписчики)</div>
+      <div class="value">{% if pm.err is not none %}{{ pm.err }}<span class="unit">%</span>{% else %}—{% endif %}</div>
+      <div class="sub">подписчиков сейчас: {{ subscribers_total }}</div>
+    </div>
+    <div class="stat-card">
+      <div class="label">ER вовлечённость</div>
+      <div class="value">{% if pm.er is not none %}{{ pm.er }}<span class="unit">%</span>{% else %}—{% endif %}</div>
+      <div class="sub">реакции {{ pm.reactions }} · комментарии {{ pm.comments }} · пересылки {{ pm.forwards }}</div>
+    </div>
+    <div class="stat-card">
+      <div class="label">Всего просмотров</div>
+      <div class="value">{{ "{:,}".format(pm.views).replace(",", " ") }}</div>
+      <div class="sub">за выбранный период</div>
+    </div>
+  </div>
+
+  <h3 style="margin-top:20px">Публикации</h3>
+  <div class="stat-grid">
+    <div class="stat-card"><div class="label">Сегодня</div><div class="value">{{ pm.published.today }}</div></div>
+    <div class="stat-card"><div class="label">Вчера</div><div class="value">{{ pm.published.yesterday }}</div></div>
+    <div class="stat-card"><div class="label">За 7 дней</div><div class="value">{{ pm.published.week }}</div></div>
+    <div class="stat-card"><div class="label">За 30 дней</div><div class="value">{{ pm.published.month }}</div></div>
+  </div>
+  <canvas id="an-published" height="90"></canvas>
+
+  <h3 style="margin-top:24px">Лучшее время для публикаций</h3>
+  <p class="muted" style="margin-top:-6px">
+    Средние просмотры поста по часу публикации (время Мадрида). Посты младше суток не учитываются — они ещё набирают просмотры. В рейтинг попадают часы, где есть минимум 3 поста.
+  </p>
+  {% if pm.best_hours %}
+  <p>
+    Лучшие часы:
+    {% for h in pm.best_hours %}<b>{{ h.label }}</b> ({{ h.avg_views }} просм., {{ h.posts }} пост.){{ ', ' if not loop.last }}{% endfor %}
+    {% if pm.best_weekdays %}<br>Лучшие дни недели:
+    {% for d in pm.best_weekdays %}<b>{{ d.label }}</b> ({{ d.avg_views }}){{ ', ' if not loop.last }}{% endfor %}{% endif %}
+  </p>
+  {% else %}
+  <p class="muted">Пока мало постов за период, чтобы определить лучшее время.</p>
+  {% endif %}
+  <canvas id="an-hours" height="100"></canvas>
+  <canvas id="an-weekdays" height="70" style="margin-top:12px"></canvas>
+
+  <h3 style="margin-top:24px">Цитирование (за 30 дней)</h3>
+  <div class="stat-grid">
+    <div class="stat-card"><div class="label">Упоминаний канала</div><div class="value">{{ citation.mentions }}</div><div class="sub">в {{ citation.mention_chats }} каналах/группах</div></div>
+    <div class="stat-card"><div class="label">Публичных репостов</div><div class="value">{{ citation.forwards }}</div><div class="sub">в {{ citation.forward_chats }} каналах/группах</div></div>
+  </div>
+  <p class="muted" style="margin-top:-4px">Подробности — во вкладках «Упоминания» и «Репосты».</p>
+
+  {% set tg = tg_analytics %}
+  <h3 style="margin-top:24px">Официальная статистика Telegram</h3>
+  {% if tg %}
+  <p class="muted" style="margin-top:-6px">
+    Данные самого Telegram за {{ tg.period_from }} — {{ tg.period_to }}, обновляются раз в 3 часа
+    (последний раз: {{ tg.fetched_at.strftime("%d.%m.%Y %H:%M") }} UTC). В отличие от наших событий входа/выхода,
+    эти числа точные.
+  </p>
+  <div class="stat-grid">
+    <div class="stat-card">
+      <div class="label">Подписчики</div>
+      <div class="value">{{ tg.followers if tg.followers is not none else '—' }}</div>
+      {% if tg.followers is not none and tg.followers_prev is not none %}
+      {% set d = tg.followers - tg.followers_prev %}
+      <div class="sub"><span class="{{ 'growth-up' if d >= 0 else 'growth-down' }}">{{ '+' if d >= 0 }}{{ d }}</span> к предыдущему периоду</div>
+      {% endif %}
+    </div>
+    <div class="stat-card">
+      <div class="label">Включены уведомления</div>
+      <div class="value">{% if tg.notifications_pct is not none %}{{ tg.notifications_pct }}<span class="unit">%</span>{% else %}—{% endif %}</div>
+    </div>
+    <div class="stat-card">
+      <div class="label">Подписались</div>
+      <div class="value" style="color:#34c759">{{ tg.joined_total if tg.joined_total is defined else '—' }}</div>
+    </div>
+    <div class="stat-card">
+      <div class="label">Отписались</div>
+      <div class="value" style="color:#ff453a">{{ tg.left_total if tg.left_total is defined else '—' }}</div>
+    </div>
+    <div class="stat-card">
+      <div class="label">Просмотров на пост</div>
+      <div class="value">{{ tg.views_per_post|round|int if tg.views_per_post is not none else '—' }}</div>
+    </div>
+    <div class="stat-card">
+      <div class="label">Репостов / реакций на пост</div>
+      <div class="value">{{ tg.shares_per_post|round|int if tg.shares_per_post is not none else '—' }} / {{ tg.reactions_per_post|round|int if tg.reactions_per_post is not none else '—' }}</div>
+    </div>
+  </div>
+
+  {% if tg.flow %}
+  <h4 class="an-h">Подписки и отписки по дням</h4>
+  <canvas id="tg-flow" height="110"></canvas>
+  {% endif %}
+
+  {% if tg.new_sources %}
+  <h4 class="an-h">Откуда пришли новые подписчики</h4>
+  <canvas id="tg-new-sources" height="110"></canvas>
+  <div class="table-wrap" style="margin-top:8px"><table>
+    <tr><th>Источник</th><th>Подписчиков</th></tr>
+    {% for r in tg.new_source_totals %}<tr><td>{{ r.name }}</td><td>{{ r.total }}</td></tr>{% endfor %}
+    {% if tg.unattributed %}<tr><td>Источник не определён</td><td>{{ tg.unattributed }}</td></tr>{% endif %}
+  </table></div>
+  <p class="muted" style="margin-top:8px">Telegram показывает источник не для всех подписчиков — остальные попадают в «не определён».</p>
+  {% endif %}
+
+  {% if tg.view_sources %}
+  <h4 class="an-h">Откуда идут просмотры</h4>
+  <canvas id="tg-view-sources" height="150"></canvas>
+  {% endif %}
+
+  {% if tg.languages %}
+  <h4 class="an-h">Языки аудитории (по просмотрам)</h4>
+  <canvas id="tg-languages" height="150"></canvas>
+  {% endif %}
+
+  {% if tg.top_hours and tg.top_hours.labels %}
+  <h4 class="an-h">Когда аудитория смотрит канал (последняя неделя, время Мадрида)</h4>
+  <canvas id="tg-hours" height="100"></canvas>
+  {% endif %}
+
+  {% if tg.interactions %}
+  <h4 class="an-h">Просмотры и репосты по дням</h4>
+  <canvas id="tg-interactions" height="110"></canvas>
+  {% endif %}
+  {% else %}
+  <div class="empty-state">Официальная статистика ещё не получена. Она доступна каналам от 500 подписчиков, когда аккаунт юзербота — администратор канала; первая загрузка занимает несколько минут после запуска.</div>
+  {% endif %}
+</div>
+
 <div class="card tab-pane" id="accounts">
   <h3>Аккаунты-слушатели</h3>
   {% if accounts %}
@@ -372,5 +520,102 @@
       },
     });
   }
+
+  // --- Вкладка «Аналитика» ---
+  const PALETTE = ['#0a84ff', '#34c759', '#ff9f0a', '#bf5af2', '#ff453a', '#64d2ff', '#ffd60a', '#8e8e93'];
+  const grid = { color: 'rgba(255,255,255,0.08)' };
+  function anChart(id, config) {
+    const el = document.getElementById(id);
+    if (el) new Chart(el, config);
+  }
+  function barOptions(stacked, legend) {
+    return {
+      plugins: { legend: { display: !!legend, labels: { boxWidth: 10 } } },
+      scales: { x: { stacked, grid: { display: false } }, y: { stacked, grid } },
+    };
+  }
+
+  const anPublished = {{ post_metrics.published_series|tojson }};
+  anChart('an-published', {
+    type: 'bar',
+    data: { labels: anPublished.map(p => p.date), datasets: [{ data: anPublished.map(p => p.count), backgroundColor: '#8e8e93' }] },
+    options: barOptions(false, false),
+  });
+
+  const anHours = {{ post_metrics.hours|tojson }};
+  anChart('an-hours', {
+    type: 'bar',
+    data: { labels: anHours.map(h => h.label), datasets: [{ label: 'Средние просмотры', data: anHours.map(h => h.avg_views), backgroundColor: '#0a84ff' }] },
+    options: {
+      plugins: {
+        legend: { display: false },
+        tooltip: { callbacks: { afterLabel: (c) => 'постов: ' + anHours[c.dataIndex].posts } },
+      },
+      scales: { x: { grid: { display: false } }, y: { grid } },
+    },
+  });
+  const anWd = {{ post_metrics.weekdays|tojson }};
+  anChart('an-weekdays', {
+    type: 'bar',
+    data: { labels: anWd.map(h => h.label), datasets: [{ label: 'Средние просмотры', data: anWd.map(h => h.avg_views), backgroundColor: '#bf5af2' }] },
+    options: {
+      plugins: {
+        legend: { display: false },
+        tooltip: { callbacks: { afterLabel: (c) => 'постов: ' + anWd[c.dataIndex].posts } },
+      },
+      scales: { x: { grid: { display: false } }, y: { grid } },
+    },
+  });
+
+  {% if tg_analytics %}
+  const tgc = {{ tg_analytics.charts|tojson }};
+  if (tgc.flow) {
+    anChart('tg-flow', {
+      type: 'bar',
+      data: { labels: tgc.flow.labels, datasets: [
+        { label: 'Подписались', data: tgc.flow.joined, backgroundColor: '#34c759' },
+        { label: 'Отписались', data: tgc.flow.left.map(v => -v), backgroundColor: '#ff453a' },
+      ] },
+      options: {
+        plugins: { legend: { display: true, labels: { boxWidth: 10 } },
+          tooltip: { callbacks: { label: (c) => c.dataset.label + ': ' + Math.abs(c.raw) } } },
+        scales: { x: { grid: { display: false } }, y: { grid, ticks: { callback: (v) => Math.abs(v) } } },
+      },
+    });
+  }
+  if (tgc.new_sources) {
+    anChart('tg-new-sources', {
+      type: 'bar',
+      data: { labels: tgc.new_sources.labels, datasets: tgc.new_sources.series.map((s, i) => ({ label: s.name, data: s.values, backgroundColor: PALETTE[i % PALETTE.length] })) },
+      options: barOptions(true, true),
+    });
+  }
+  function doughnut(id, rows) {
+    anChart(id, {
+      type: 'doughnut',
+      data: { labels: rows.map(r => r.name), datasets: [{ data: rows.map(r => r.total), backgroundColor: rows.map((_, i) => PALETTE[i % PALETTE.length]), borderWidth: 0 }] },
+      options: { plugins: { legend: { position: 'right', labels: { boxWidth: 10 } } } },
+    });
+  }
+  if (tgc.view_sources) doughnut('tg-view-sources', tgc.view_sources);
+  if (tgc.languages) doughnut('tg-languages', tgc.languages);
+  if (tgc.top_hours && tgc.top_hours.labels.length) {
+    anChart('tg-hours', {
+      type: 'bar',
+      data: { labels: tgc.top_hours.labels, datasets: [{ data: tgc.top_hours.values, backgroundColor: '#ff9f0a' }] },
+      options: barOptions(false, false),
+    });
+  }
+  if (tgc.interactions) {
+    anChart('tg-interactions', {
+      type: 'line',
+      data: { labels: tgc.interactions.labels, datasets: tgc.interactions.series.map((s, i) => ({ label: s.name, data: s.values, borderColor: PALETTE[i], backgroundColor: PALETTE[i], tension: 0.25, pointRadius: 0, yAxisID: i ? 'y2' : 'y' })) },
+      options: {
+        plugins: { legend: { display: true, labels: { boxWidth: 10 } } },
+        scales: { x: { grid: { display: false } }, y: { grid }, y2: { position: 'right', grid: { display: false } } },
+      },
+    });
+  }
+  {% endif %}
 </script>
 {% endblock %}

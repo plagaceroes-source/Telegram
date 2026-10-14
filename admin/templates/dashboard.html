@@ -328,6 +328,26 @@
     </div>
   </div>
 
+  <h3 style="margin-top:20px">Рекламный охват</h3>
+  {% if pm.reach_age %}
+  <div class="stat-grid">
+    {% for r in pm.reach_age %}
+    <div class="stat-card">
+      <div class="label">Просмотров за {{ r.age }} ч</div>
+      <div class="value">{{ r.avg }}</div>
+      <div class="sub">в среднем на пост · замеров: {{ r.posts }}</div>
+    </div>
+    {% endfor %}
+    <div class="stat-card">
+      <div class="label">ERR24</div>
+      <div class="value">{% if pm.err24 is not none %}{{ pm.err24 }}<span class="unit">%</span>{% else %}—{% endif %}</div>
+      <div class="sub">охват за 24 ч ÷ подписчики</div>
+    </div>
+  </div>
+  {% else %}
+  <p class="muted">Замеры просмотров через 12, 24 и 48 часов после публикации копятся с момента включения функции — данные появятся через сутки-двое.</p>
+  {% endif %}
+
   <h3 style="margin-top:20px">Публикации</h3>
   <div class="stat-grid">
     <div class="stat-card"><div class="label">Сегодня</div><div class="value">{{ pm.published.today }}</div></div>

@@ -24,6 +24,7 @@ from news_agent.db.models import (
     ChannelStatsDaily,
     DraftPost,
     InviteLink,
+    InviteLinkCost,
     LinkClick,
     ChannelMention,
     ChannelPost,
@@ -849,6 +850,26 @@ async def stats_page(
         )
         clicks_by_link = {link_id: (total, uniq) for link_id, total, uniq in clicks_result.all()}
 
+        # Цена подписчика/перехода считается по всему времени ссылки (а не по выбранному периоду):
+        # стоимость размещения — разовая, за всё время жизни рекламы.
+        costs_by_link = {
+            c.invite_link_id: c for c in (await session.execute(select(InviteLinkCost))).scalars()
+        }
+        all_counts_result = await session.execute(
+            select(SubscriberEvent.invite_link_id, SubscriberEvent.event_type, func.count())
+            .where(SubscriberEvent.invite_link_id.in_(list(costs_by_link) or [0]))
+            .group_by(SubscriberEvent.invite_link_id, SubscriberEvent.event_type)
+        )
+        all_counts: dict[int, dict[str, int]] = {}
+        for link_id, event_type, cnt in all_counts_result.all():
+            all_counts.setdefault(link_id, {})[event_type] = cnt
+        all_clicks_result = await session.execute(
+            select(LinkClick.invite_link_id, func.count(func.distinct(LinkClick.visitor_hash)))
+            .where(LinkClick.invite_link_id.in_(list(costs_by_link) or [0]))
+            .group_by(LinkClick.invite_link_id)
+        )
+        all_unique_clicks = dict(all_clicks_result.all())
+
         invite_stats = []
         for link in invite_links:
             link_counts = counts_by_link.get(link.id, {})
@@ -867,6 +888,9 @@ async def stats_page(
                     "joins": joins,
                     "leaves": link_counts.get("leave", 0),
                     "revoked": link.revoked,
+                    "cost": _cost_metrics(
+                        costs_by_link.get(link.id), all_counts.get(link.id, {}), all_unique_clicks.get(link.id, 0)
+                    ),
                 }
             )
 
@@ -969,6 +993,51 @@ async def _revoke_invite(link_id: int) -> None:
         link = await session.get(InviteLink, link_id)
         if link:
             link.revoked = True
+
+
+def _cost_metrics(cost, counts: dict[str, int], unique_clicks: int) -> dict | None:
+    """Цена подписчика (за вход), «удержанного» подписчика (вход минус выход) и перехода."""
+    if cost is None or not cost.amount:
+        return None
+    joins, leaves = counts.get("join", 0), counts.get("leave", 0)
+    net = joins - leaves
+
+    def per(n: int) -> float | None:
+        return round(cost.amount / n, 2) if n > 0 else None
+
+    return {
+        "amount": cost.amount,
+        "currency": cost.currency,
+        "per_join": per(joins),
+        "per_net": per(net),
+        "per_click": per(unique_clicks),
+        "joins": joins,
+        "net": net,
+    }
+
+
+@app.post("/invite_links/{link_id}/cost")
+async def set_invite_link_cost(link_id: int, amount: str = Form(""), currency: str = Form("€")):
+    """Сохраняет стоимость рекламы по ссылке; пустое или нулевое значение стирает её."""
+    try:
+        value = float(amount.replace(",", ".").strip()) if amount.strip() else 0.0
+    except ValueError:
+        value = 0.0
+    value = max(value, 0.0)
+    currency = (currency.strip() or "€")[:8]
+    async with session_scope() as session:
+        if await session.get(InviteLink, link_id) is None:
+            return RedirectResponse("/stats#invites", status_code=303)
+        row = await session.scalar(select(InviteLinkCost).where(InviteLinkCost.invite_link_id == link_id))
+        if value <= 0:
+            if row is not None:
+                await session.delete(row)
+        elif row is None:
+            session.add(InviteLinkCost(invite_link_id=link_id, amount=value, currency=currency))
+        else:
+            row.amount, row.currency = value, currency
+            row.updated_at = dt.datetime.now(dt.timezone.utc)
+    return RedirectResponse("/stats#invites", status_code=303)
 
 
 @app.post("/invite_links/{link_id}/revoke")

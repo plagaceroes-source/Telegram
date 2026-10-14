@@ -5,9 +5,9 @@ from __future__ import annotations
 import datetime as dt
 from collections import defaultdict
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 
-from news_agent.db.models import ChannelAnalytics, ChannelPost, TargetChannel
+from news_agent.db.models import ChannelAnalytics, ChannelPost, PostViewSnapshot, TargetChannel
 from news_agent.reports.period import REPORT_TZ
 
 AN_PERIODS = {"7": 7, "30": 30, "90": 90, "all": None}
@@ -124,7 +124,23 @@ async def post_metrics(session, an_period: str, subscribers: int) -> dict:
         for i in range(29, -1, -1)
     ]
 
+    snap_query = (
+        select(PostViewSnapshot.age_hours, func.avg(PostViewSnapshot.views), func.count())
+        .where(PostViewSnapshot.target_channel_id.in_(active_ids))
+        .group_by(PostViewSnapshot.age_hours)
+        .order_by(PostViewSnapshot.age_hours)
+    )
+    if since:
+        snap_query = snap_query.where(PostViewSnapshot.captured_at >= since)
+    snap_rows = (await session.execute(snap_query)).all() if active_ids else []
+    reach_age = [
+        {"age": age, "avg": round(avg), "posts": cnt} for age, avg, cnt in snap_rows
+    ]
+    avg24 = next((r["avg"] for r in reach_age if r["age"] == 24), None)
+
     return {
+        "reach_age": reach_age,
+        "err24": _pct(avg24, subscribers) if avg24 is not None else None,
         "period": an_period,
         "posts": len(posts),
         "views": views,

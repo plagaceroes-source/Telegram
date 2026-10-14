@@ -53,6 +53,10 @@
 
 <style>
   .inv-tabs { flex-wrap: wrap; overflow-x: visible; }
+  .cost-form { display: flex; gap: 8px; margin-top: 8px; align-items: center; }
+  .cost-form input { flex: 1; min-width: 0; }
+  .cost-form .cost-cur { flex: 0 0 64px; text-align: center; }
+  .cost-form button { white-space: nowrap; }
 </style>
 
 <div class="card" id="invites">
@@ -99,6 +103,20 @@
     </div>
     <div class="meta">@{{ row.channel_username }}</div>
     <div class="meta">переходы <span class="num-click">{{ row.clicks }}</span> (уник. {{ row.unique_clicks }}) · join <span class="num-join">{{ row.joins }}</span> · leave <span class="num-leave">{{ row.leaves }}</span> · now <span class="num-now">{{ row.joins - row.leaves }}</span>{% if row.conversion is not none %} · конв. {{ row.conversion }}%{% endif %}</div>
+    {% if row.cost %}
+    <div class="meta">
+      реклама: <b>{{ row.cost.amount|round(2) }} {{ row.cost.currency }}</b>
+      · за подписчика: <b>{{ (row.cost.per_join|string ~ ' ' ~ row.cost.currency) if row.cost.per_join is not none else '—' }}</b>
+      · за оставшегося: <b>{{ (row.cost.per_net|string ~ ' ' ~ row.cost.currency) if row.cost.per_net is not none else '—' }}</b>
+      · за переход: <b>{{ (row.cost.per_click|string ~ ' ' ~ row.cost.currency) if row.cost.per_click is not none else '—' }}</b>
+      <span class="muted">(за всё время ссылки: {{ row.cost.joins }} подписок, {{ row.cost.net }} осталось)</span>
+    </div>
+    {% endif %}
+    <form method="post" action="/invite_links/{{ row.id }}/cost" class="cost-form">
+      <input type="text" inputmode="decimal" name="amount" value="{{ row.cost.amount|round(2) if row.cost else '' }}" placeholder="Стоимость рекламы" aria-label="Стоимость рекламы">
+      <input type="text" name="currency" value="{{ row.cost.currency if row.cost else '€' }}" maxlength="8" aria-label="Валюта" class="cost-cur">
+      <button type="submit" class="secondary">Сохранить</button>
+    </form>
     {% if not row.revoked %}
     <div class="meta" style="margin-top:8px;">Ссылка-счётчик (её ставьте в рекламу):</div>
     <div class="link-row">

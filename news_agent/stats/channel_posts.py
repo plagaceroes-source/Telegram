@@ -11,12 +11,14 @@ import re
 from sqlalchemy import delete, select
 from telethon import TelegramClient
 
-from news_agent.db.models import ChannelPost, PublishedPost, TargetChannel
+from news_agent.db.models import ChannelPost, PostViewSnapshot, PublishedPost, TargetChannel
 from news_agent.db.session import session_scope
 
 logger = logging.getLogger(__name__)
 
 SNIPPET_LEN = 300
+SNAPSHOT_AGES = (12, 24, 48)  # через сколько часов после публикации фиксируем просмотры
+SNAPSHOT_WINDOW_HOURS = 3  # позже этого окна замер уже неточный — пропускаем, а не пишем
 ITER_LIMIT = 5000
 
 
@@ -61,6 +63,44 @@ def group_messages(messages: list) -> list[dict]:
     result = list(posts.values())
     result.sort(key=lambda p: p["first_id"], reverse=True)
     return result
+
+
+def due_snapshot_ages(posted_at: dt.datetime, now: dt.datetime) -> list[int]:
+    """Какие замеры (12/24/48 ч) для поста сейчас «в окне»: возраст от N до N+окно часов."""
+    if posted_at.tzinfo is None:
+        posted_at = posted_at.replace(tzinfo=dt.timezone.utc)
+    age_h = (now - posted_at).total_seconds() / 3600
+    return [a for a in SNAPSHOT_AGES if a <= age_h < a + SNAPSHOT_WINDOW_HOURS]
+
+
+async def record_view_snapshots(session, target_id: int, posts: list[dict], now: dt.datetime) -> int:
+    due = {p["first_id"]: (p, due_snapshot_ages(p["date"], now)) for p in posts}
+    due = {mid: v for mid, v in due.items() if v[1]}
+    if not due:
+        return 0
+    existing = {
+        (r.tg_message_id, r.age_hours)
+        for r in (
+            await session.execute(
+                select(PostViewSnapshot).where(
+                    PostViewSnapshot.target_channel_id == target_id,
+                    PostViewSnapshot.tg_message_id.in_(list(due)),
+                )
+            )
+        ).scalars()
+    }
+    added = 0
+    for mid, (p, ages) in due.items():
+        for age in ages:
+            if (mid, age) in existing:
+                continue
+            session.add(
+                PostViewSnapshot(
+                    target_channel_id=target_id, tg_message_id=mid, age_hours=age, views=p["views"], captured_at=now
+                )
+            )
+            added += 1
+    return added
 
 
 async def sync_channel_posts(client: TelegramClient, lookback_days: int) -> int:
@@ -120,6 +160,7 @@ async def sync_channel_posts(client: TelegramClient, lookback_days: int) -> int:
                 row.reactions_count = p["reactions"]
                 row.comments_count = p["comments"]
                 row.updated_at = now
+            await record_view_snapshots(session, target.id, posts, now)
             # Пост удалили из канала — убираем и из зеркала. Только если окно прочитано целиком,
             # иначе (лимит/сбой) можно было бы стереть живые посты.
             if len(messages) < ITER_LIMIT:

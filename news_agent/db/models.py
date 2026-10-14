@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import datetime as dt
 
-from sqlalchemy import JSON, BigInteger, DateTime, ForeignKey, Index, String, UniqueConstraint
+from sqlalchemy import JSON, BigInteger, DateTime, Float, ForeignKey, Index, String, UniqueConstraint
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -212,6 +212,25 @@ class ChannelPost(Base):
     )
 
 
+class PostViewSnapshot(Base):
+    """Просмотры поста через N часов после публикации (12/24/48) — основа «рекламного охвата»
+    и ERR24. Задним числом не восстановить, копится с момента запуска. Без FK на channel_posts:
+    удаление поста из зеркала не должно упираться в снимки."""
+
+    __tablename__ = "post_view_snapshots"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    target_channel_id: Mapped[int] = mapped_column(ForeignKey("target_channels.id"))
+    tg_message_id: Mapped[int] = mapped_column()
+    age_hours: Mapped[int] = mapped_column()
+    views: Mapped[int] = mapped_column(default=0)
+    captured_at: Mapped[dt.datetime] = mapped_column(**_TZ_NOW)
+
+    __table_args__ = (
+        UniqueConstraint("target_channel_id", "tg_message_id", "age_hours", name="uq_post_view_snapshots"),
+    )
+
+
 class ChannelAnalytics(Base):
     """Официальная аналитика канала от Telegram (stats.getBroadcastStats) — одна актуальная
     запись на канал: сводные значения и графики в нормализованном JSON."""
@@ -268,6 +287,19 @@ class InviteLink(Base):
     target_channel: Mapped[TargetChannel] = relationship()
 
     __table_args__ = (Index("ix_invite_links_name", "name"),)
+
+
+class InviteLinkCost(Base):
+    """Стоимость размещения рекламы с этой инвайт-ссылкой — для цены подписчика и перехода.
+    Отдельной таблицей, а не колонкой: create_all не меняет уже существующие таблицы."""
+
+    __tablename__ = "invite_link_costs"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    invite_link_id: Mapped[int] = mapped_column(ForeignKey("invite_links.id"), unique=True)
+    amount: Mapped[float] = mapped_column(Float, default=0.0)
+    currency: Mapped[str] = mapped_column(String(8), default="€")
+    updated_at: Mapped[dt.datetime] = mapped_column(**_TZ_NOW)
 
 
 class LinkClick(Base):

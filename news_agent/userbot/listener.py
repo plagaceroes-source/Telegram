@@ -22,6 +22,7 @@ from news_agent.db.session import session_scope
 from news_agent.services.language import detect_language
 from news_agent.services.media_relay import upload_and_get_ref
 from news_agent.stats.channel_posts import sync_channel_posts
+from news_agent.stats.competitors import collect_competitors
 from news_agent.stats.mentions import collect_mentions
 from news_agent.stats.post_forwards import collect_post_forwards
 from news_agent.stats.post_stats import collect_post_stats
@@ -62,6 +63,7 @@ class AccountWorker:
             self._channel_posts_loop(),
             self._mentions_loop(),
             self._tg_analytics_loop(),
+            self._competitors_loop(),
             self.client.run_until_disconnected(),
         )
 
@@ -115,6 +117,17 @@ class AccountWorker:
             except Exception:
                 logger.exception("Аккаунт %s: ошибка сбора официальной аналитики Telegram", self.account_id)
             await asyncio.sleep(settings.analytics_poll_interval)
+
+    async def _competitors_loop(self) -> None:
+        # Проход каждые 15 минут: новые конкуренты подхватываются быстро, а уже собранные
+        # обновляются раз в competitors_poll_interval (collect_competitors сам отбирает «просроченных»).
+        while True:
+            try:
+                if await self._is_post_stats_owner():
+                    await collect_competitors(self.client, settings.competitors_poll_interval)
+            except Exception:
+                logger.exception("Аккаунт %s: ошибка сбора данных по конкурентам", self.account_id)
+            await asyncio.sleep(900)
 
     async def _channel_posts_loop(self) -> None:
         while True:

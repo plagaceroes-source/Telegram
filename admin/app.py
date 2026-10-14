@@ -16,12 +16,15 @@ from sqlalchemy.orm import selectinload
 
 from admin import analytics as analytics_view
 from admin import auth
+from admin import competitors as competitors_view
 from news_agent.bot.session import build_bot
 from news_agent.config import settings
 from news_agent.db.models import (
     Blogger,
     BloggerLink,
     ChannelStatsDaily,
+    Competitor,
+    CompetitorSnapshot,
     DraftPost,
     InviteLink,
     InviteLinkCost,
@@ -510,6 +513,15 @@ async def dashboard(
 
         post_metrics = await analytics_view.post_metrics(session, an_period, subscribers_total)
         tg_analytics = await analytics_view.telegram_analytics(session)
+        competitors = await competitors_view.competitors_view(
+            session,
+            {
+                "subscribers": subscribers_total,
+                "avg_reach": post_metrics["avg_reach"],
+                "err": post_metrics["err"],
+                "posts_week": post_metrics["published"]["week"],
+            },
+        )
         citation_forwards, _, citation_forwards_total = await _forward_stats(session, "30")
         citation_mentions, _, citation_mentions_total = await _mention_stats(session, "30")
         citation = {
@@ -569,6 +581,7 @@ async def dashboard(
             "post_metrics": post_metrics,
             "tg_analytics": tg_analytics,
             "citation": citation,
+            "competitors": competitors,
         },
     )
 
@@ -993,6 +1006,30 @@ async def _revoke_invite(link_id: int) -> None:
         link = await session.get(InviteLink, link_id)
         if link:
             link.revoked = True
+
+
+@app.post("/competitors")
+async def add_competitor(username: str = Form("")):
+    name = competitors_view.parse_username(username)
+    if name:
+        async with session_scope() as session:
+            count = await session.scalar(select(func.count()).select_from(Competitor))
+            exists = await session.scalar(
+                select(Competitor.id).where(func.lower(Competitor.username) == name.lower())
+            )
+            if exists is None and (count or 0) < competitors_view.MAX_COMPETITORS:
+                session.add(Competitor(username=name))
+    return RedirectResponse("/#competitors", status_code=303)
+
+
+@app.post("/competitors/{competitor_id}/delete")
+async def delete_competitor(competitor_id: int):
+    async with session_scope() as session:
+        await session.execute(
+            CompetitorSnapshot.__table__.delete().where(CompetitorSnapshot.competitor_id == competitor_id)
+        )
+        await session.execute(Competitor.__table__.delete().where(Competitor.id == competitor_id))
+    return RedirectResponse("/#competitors", status_code=303)
 
 
 def _cost_metrics(cost, counts: dict[str, int], unique_clicks: int) -> dict | None:

@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import datetime as dt
 
-from sqlalchemy import JSON, BigInteger, DateTime, Float, ForeignKey, Index, String, UniqueConstraint
+from sqlalchemy import JSON, BigInteger, Date, DateTime, Float, ForeignKey, Index, String, UniqueConstraint
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -210,6 +210,37 @@ class ChannelPost(Base):
         UniqueConstraint("target_channel_id", "tg_message_id", name="uq_channel_posts_target_msg"),
         Index("ix_channel_posts_posted_at", "posted_at"),
     )
+
+
+class Competitor(Base):
+    """Чужой публичный канал, за которым следим для сравнения с нашим."""
+
+    __tablename__ = "competitors"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    username: Mapped[str] = mapped_column(String(64), unique=True)
+    title: Mapped[str] = mapped_column(String(255), default="")
+    created_at: Mapped[dt.datetime] = mapped_column(**_TZ_NOW)
+    last_fetched_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_error: Mapped[str] = mapped_column(String(255), default="")
+
+
+class CompetitorSnapshot(Base):
+    """Показатели конкурента за день (в течение дня запись обновляется): подписчики и
+    метрики по постам за последние 30 дней."""
+
+    __tablename__ = "competitor_snapshots"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    competitor_id: Mapped[int] = mapped_column(ForeignKey("competitors.id"))
+    snap_date: Mapped[dt.date] = mapped_column(Date)
+    subscribers: Mapped[int] = mapped_column(default=0)
+    posts_7d: Mapped[int] = mapped_column(default=0)
+    posts_30d: Mapped[int] = mapped_column(default=0)
+    avg_views_30d: Mapped[int] = mapped_column(default=0)
+    captured_at: Mapped[dt.datetime] = mapped_column(**_TZ_NOW)
+
+    __table_args__ = (UniqueConstraint("competitor_id", "snap_date", name="uq_competitor_snapshots_day"),)
 
 
 class PostViewSnapshot(Base):

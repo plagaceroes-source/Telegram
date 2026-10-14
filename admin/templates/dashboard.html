@@ -30,6 +30,12 @@
 </div>
 
 <style>
+  .cmp-add { display: flex; gap: 8px; margin: 12px 0 16px; }
+  .cmp-add input { flex: 1; min-width: 0; font-size: 16px; }
+  .cmp-table td, .cmp-table th { white-space: nowrap; }
+  .cmp-table tr.cmp-me td { background: rgba(255,255,255,0.05); }
+  .cmp-del { padding: 4px 10px; }
+  .cmp-table a { color: var(--text); text-decoration: none; border-bottom: 1px dotted var(--border-strong); }
   .an-h { margin: 22px 0 8px; font-size: 14px; font-weight: 600; }
   .tab-pane { display: none; }
   html[data-tab="subscriber-stats"] #subscriber-stats,
@@ -37,6 +43,7 @@
   html[data-tab="forwards"] #forwards,
   html[data-tab="mentions"] #mentions,
   html[data-tab="analytics"] #analytics,
+  html[data-tab="competitors"] #competitors,
   html[data-tab="accounts"] #accounts { display: block; }
   .dash-tabs { flex-wrap: wrap; overflow-x: visible; }
   .dash-tabs .subtab-btn { padding: 8px 13px; }
@@ -48,13 +55,14 @@
   <button type="button" class="subtab-btn" data-tab-btn="forwards" onclick="showDashTab('forwards')">Репосты</button>
   <button type="button" class="subtab-btn" data-tab-btn="mentions" onclick="showDashTab('mentions')">Упоминания</button>
   <button type="button" class="subtab-btn" data-tab-btn="analytics" onclick="showDashTab('analytics')">Аналитика</button>
+  <button type="button" class="subtab-btn" data-tab-btn="competitors" onclick="showDashTab('competitors')">Конкуренты</button>
   <button type="button" class="subtab-btn" data-tab-btn="accounts" onclick="showDashTab('accounts')">Юзерботы</button>
 </div>
 <script>
   // Активная вкладка хранится в #hash (совпадает с id блока), поэтому ссылки смены периода/сортировки
   // с якорями вида /?period=7#subscriber-stats после перезагрузки остаются на своей вкладке.
   (function () {
-    var TABS = ['subscriber-stats', 'top-posts', 'forwards', 'mentions', 'analytics', 'accounts'];
+    var TABS = ['subscriber-stats', 'top-posts', 'forwards', 'mentions', 'analytics', 'competitors', 'accounts'];
     function current() {
       var h = location.hash.slice(1);
       return TABS.indexOf(h) >= 0 ? h : 'subscriber-stats';
@@ -460,6 +468,64 @@
   {% endif %}
 </div>
 
+<div class="card tab-pane" id="competitors">
+  <h3>Сравнение с конкурентами</h3>
+  <p class="muted" style="margin-top:-6px">
+    Добавьте публичные каналы — раз в 6 часов мы снимаем число подписчиков и просмотры их постов за 30 дней.
+    Приватные каналы и группы не поддерживаются. Данные начинают накапливаться после добавления: прирост появится на следующий день.
+  </p>
+  {% if not competitors.limit_reached %}
+  <form method="post" action="/competitors" class="cmp-add">
+    <input type="text" name="username" placeholder="@канал или t.me/канал" required aria-label="Канал конкурента" autocapitalize="off" autocorrect="off">
+    <button type="submit">Добавить</button>
+  </form>
+  {% else %}
+  <p class="muted">Достигнут лимит каналов.</p>
+  {% endif %}
+
+  {% if competitors.count %}
+  <div class="table-wrap">
+    <table class="cmp-table">
+      <tr><th>Канал</th><th>Подписчики</th><th>Прирост 7 дн.</th><th>Прирост 30 дн.</th><th>Постов / 7 дн.</th><th>Ср. охват</th><th>ERR</th><th></th></tr>
+      {% for r in competitors.rows %}
+      <tr {% if r.is_me %}class="cmp-me"{% endif %}>
+        <td>
+          {% if r.is_me %}<b>Мой канал</b>
+          {% else %}<a href="https://t.me/{{ r.username }}" target="_blank" rel="noopener">{{ r.title }}</a>
+            {% if r.error %}<div class="meta" style="color:#ff453a">{{ r.error }}</div>
+            {% elif r.pending %}<div class="meta">данные собираются…</div>{% endif %}
+          {% endif %}
+        </td>
+        <td>{{ "{:,}".format(r.subscribers).replace(",", " ") if r.subscribers is not none else '—' }}</td>
+        {% for g in (r.g7, r.g30) %}
+        <td>
+          {% if g %}<span class="{{ 'growth-up' if g[0] >= 0 else 'growth-down' }}">{{ '+' if g[0] >= 0 }}{{ g[0] }}</span>
+            {% if r.subscribers %}<div class="meta">{{ '%.1f'|format(g[0] / (r.subscribers - g[0]) * 100 if r.subscribers - g[0] else 0) }}%{% if g[1] < g[2] %} · за {{ g[1] }} дн.{% endif %}</div>{% endif %}
+          {% else %}—{% endif %}
+        </td>
+        {% endfor %}
+        <td>{{ r.posts_week if r.posts_week is not none else '—' }}</td>
+        <td>{{ r.avg_reach if r.avg_reach is not none else '—' }}</td>
+        <td>{{ (r.err|string ~ '%') if r.err is not none else '—' }}</td>
+        <td>{% if not r.is_me %}
+          <form method="post" action="/competitors/{{ r.id }}/delete" onsubmit="return confirm('Убрать канал из сравнения?')">
+            <button type="submit" class="secondary cmp-del" aria-label="Удалить">✕</button>
+          </form>{% endif %}</td>
+      </tr>
+      {% endfor %}
+    </table>
+  </div>
+  <p class="muted" style="margin-top:8px">Ср. охват — средние просмотры поста за 30 дней, ERR — охват ÷ подписчики. Прирост за период без полной истории помечен «за N дн.».</p>
+
+  {% if competitors.chart.datasets|length > 1 %}
+  <h4 class="an-h">Динамика подписчиков, % к началу периода</h4>
+  <canvas id="cmp-growth" height="130"></canvas>
+  {% endif %}
+  {% else %}
+  <div class="empty-state">Конкуренты пока не добавлены.</div>
+  {% endif %}
+</div>
+
 <div class="card tab-pane" id="accounts">
   <h3>Аккаунты-слушатели</h3>
   {% if accounts %}
@@ -637,5 +703,21 @@
     });
   }
   {% endif %}
+
+  const cmpChart = {{ competitors.chart|tojson }};
+  if (cmpChart.datasets.length > 1) {
+    anChart('cmp-growth', {
+      type: 'line',
+      data: { labels: cmpChart.labels, datasets: cmpChart.datasets.map((d, i) => ({
+        label: d.name, data: d.values, spanGaps: true, tension: 0.25, pointRadius: 0,
+        borderColor: d.me ? '#ffffff' : PALETTE[i % PALETTE.length], borderWidth: d.me ? 3 : 1.5,
+      })) },
+      options: {
+        plugins: { legend: { display: true, labels: { boxWidth: 10 } },
+          tooltip: { callbacks: { label: (c) => c.dataset.label + ': ' + (c.raw >= 0 ? '+' : '') + c.raw + '%' } } },
+        scales: { x: { grid: { display: false } }, y: { grid, ticks: { callback: (v) => v + '%' } } },
+      },
+    });
+  }
 </script>
 {% endblock %}

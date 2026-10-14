@@ -212,6 +212,18 @@ class ChannelPost(Base):
     )
 
 
+class ChannelAnalytics(Base):
+    """Официальная аналитика канала от Telegram (stats.getBroadcastStats) — одна актуальная
+    запись на канал: сводные значения и графики в нормализованном JSON."""
+
+    __tablename__ = "channel_analytics"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    target_channel_id: Mapped[int] = mapped_column(ForeignKey("target_channels.id"), unique=True)
+    data: Mapped[dict] = mapped_column(JSON, default=dict)
+    fetched_at: Mapped[dt.datetime] = mapped_column(**_TZ_NOW)
+
+
 class ChannelMention(Base):
     """Упоминание нашего канала (@username или ссылка t.me/...) в чужом сообщении —
     найдено глобальным поиском Telegram или поиском по каналам-источникам."""

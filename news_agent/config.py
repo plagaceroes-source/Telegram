@@ -121,6 +121,7 @@ class Settings:
     post_forwards_lookback_days: int = field(default_factory=lambda: _int("POST_FORWARDS_LOOKBACK_DAYS", 30))
 
     # Поиск упоминаний нашего канала в чужих каналах/группах (news_agent/stats/mentions.py).
+    analytics_poll_interval: int = field(default_factory=lambda: _int("ANALYTICS_POLL_INTERVAL", 10800))
     mentions_poll_interval: int = field(default_factory=lambda: _int("MENTIONS_POLL_INTERVAL", 3600))
 
     # Группа для ежедневных/месячных отчётов по статистике (news_agent/reports/).

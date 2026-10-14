@@ -25,6 +25,7 @@ from news_agent.stats.channel_posts import sync_channel_posts
 from news_agent.stats.mentions import collect_mentions
 from news_agent.stats.post_forwards import collect_post_forwards
 from news_agent.stats.post_stats import collect_post_stats
+from news_agent.stats.tg_analytics import collect_tg_analytics
 
 logger = logging.getLogger(__name__)
 
@@ -60,6 +61,7 @@ class AccountWorker:
             self._post_forwards_loop(),
             self._channel_posts_loop(),
             self._mentions_loop(),
+            self._tg_analytics_loop(),
             self.client.run_until_disconnected(),
         )
 
@@ -104,6 +106,15 @@ class AccountWorker:
             except Exception:
                 logger.exception("Аккаунт %s: ошибка поиска упоминаний", self.account_id)
             await asyncio.sleep(settings.mentions_poll_interval)
+
+    async def _tg_analytics_loop(self) -> None:
+        while True:
+            try:
+                if await self._is_post_stats_owner():
+                    await collect_tg_analytics(self.client)
+            except Exception:
+                logger.exception("Аккаунт %s: ошибка сбора официальной аналитики Telegram", self.account_id)
+            await asyncio.sleep(settings.analytics_poll_interval)
 
     async def _channel_posts_loop(self) -> None:
         while True:

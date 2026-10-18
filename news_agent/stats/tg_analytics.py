@@ -21,7 +21,7 @@ from telethon import TelegramClient, errors
 from telethon.tl.functions.stats import GetBroadcastStatsRequest, LoadAsyncGraphRequest
 from telethon.tl.types import StatsGraph, StatsGraphAsync, StatsGraphError
 
-from news_agent.db.models import ChannelAnalytics, TargetChannel
+from news_agent.db.models import ChannelAnalytics, ChannelStatsDaily, TargetChannel
 from news_agent.db.session import session_scope
 from news_agent.stats.post_forwards import _stats_call
 
@@ -110,6 +110,47 @@ async def fetch_broadcast_stats(client: TelegramClient, entity, stats_state: dic
     return out
 
 
+BACKFILL_HOUR_UTC = 21  # точка «конца дня» для восстановленных значений (до закрытия суток по Мадриду)
+
+
+async def backfill_subscriber_history(session, target_id: int, data: dict, today: dt.date | None = None) -> int:
+    """Достраивает ChannelStatsDaily по официальному графику подписчиков Telegram за дни, когда
+    собственных снепшотов нет (например, сломался cron). Существующие снепшоты не трогает,
+    сегодняшний день пропускает — его снимет обычный снепшот."""
+    graph = (data.get("graphs") or {}).get("growth_graph")
+    if not graph or not graph.get("series") or not graph.get("x"):
+        return 0
+    today = today or dt.datetime.now(dt.timezone.utc).date()
+    values = graph["series"][0]["values"]
+    added = 0
+    for ms, value in zip(graph["x"], values):
+        if not isinstance(value, (int, float)):
+            continue
+        day = dt.datetime.fromtimestamp(ms / 1000, tz=dt.timezone.utc).date()
+        if day >= today:
+            continue
+        start = dt.datetime(day.year, day.month, day.day, tzinfo=dt.timezone.utc)
+        exists = await session.scalar(
+            select(ChannelStatsDaily.id)
+            .where(
+                ChannelStatsDaily.target_channel_id == target_id,
+                ChannelStatsDaily.snapshot_at >= start,
+                ChannelStatsDaily.snapshot_at < start + dt.timedelta(days=1),
+            )
+            .limit(1)
+        )
+        if exists is None:
+            session.add(
+                ChannelStatsDaily(
+                    target_channel_id=target_id,
+                    subscriber_count=int(value),
+                    snapshot_at=start + dt.timedelta(hours=BACKFILL_HOUR_UTC),
+                )
+            )
+            added += 1
+    return added
+
+
 async def collect_tg_analytics(client: TelegramClient) -> int:
     """Обновляет ChannelAnalytics по каждому активному каналу. Возвращает число обновлённых."""
     async with session_scope() as session:
@@ -144,6 +185,13 @@ async def collect_tg_analytics(client: TelegramClient) -> int:
                 session.add(row)
             row.data = data
             row.fetched_at = dt.datetime.now(dt.timezone.utc)
+            restored = await backfill_subscriber_history(session, target.id, data)
+        if restored:
+            logger.warning(
+                "Канал %s: в истории подписчиков не было снепшотов за %d дн. — восстановлено по данным Telegram",
+                target.username,
+                restored,
+            )
         logger.info(
             "Канал %s: официальная аналитика Telegram обновлена, графики: %s",
             target.username,

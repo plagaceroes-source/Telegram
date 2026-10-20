@@ -1,0 +1,47 @@
+:root{
+  /* Временная палитра. Заменить после разбора Instagram и логотипа SOVERION */
+  --bg:#0b0b0c; --fg:#f4f3ef; --muted:#9a9a96; --line:#26262a; --card:#141416;
+  --accent:#d7ff3a; --accent-fg:#0b0b0c; --r:18px;
+  --pad:clamp(16px,4vw,48px);
+}
+*{box-sizing:border-box;margin:0}
+html{scroll-behavior:smooth}
+body{background:var(--bg);color:var(--fg);font:16px/1.55 system-ui,-apple-system,"Segoe UI",Inter,sans-serif;-webkit-font-smoothing:antialiased}
+a{color:inherit;text-decoration:none}
+:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+h1{font-size:clamp(40px,8vw,112px);line-height:.98;letter-spacing:-.03em;font-weight:700}
+h2{font-size:clamp(28px,4vw,52px);letter-spacing:-.02em;margin-bottom:24px}
+h3{font-size:20px}
+.muted{color:var(--muted)} .lead{font-size:clamp(17px,2vw,22px);color:var(--muted);max-width:56ch;margin:20px 0 32px}
+.header{position:sticky;top:0;z-index:10;display:flex;align-items:center;justify-content:space-between;gap:16px;padding:14px var(--pad);background:color-mix(in srgb,var(--bg) 85%,transparent);backdrop-filter:blur(12px);border-bottom:1px solid var(--line)}
+.header nav{display:flex;gap:28px} .header nav a{color:var(--muted);transition:color .2s} .header nav a:hover{color:var(--fg)}
+.logo{font-weight:800;letter-spacing:.18em}
+.btn{display:inline-block;background:var(--accent);color:var(--accent-fg);padding:16px 28px;border-radius:999px;font-weight:600;border:0;cursor:pointer;font-size:16px;transition:transform .2s}
+.btn:hover{transform:translateY(-2px) scale(1.03)} .btn:disabled{opacity:.6} .btn-sm{padding:10px 18px;font-size:14px}
+.hero{position:relative;overflow:hidden;padding:clamp(56px,10vw,140px) var(--pad) 64px}
+.kicker{color:var(--accent);text-transform:uppercase;letter-spacing:.14em;font-size:13px;margin-bottom:20px}
+.blob{position:absolute;right:-10%;top:-20%;width:min(60vw,720px);aspect-ratio:1;background:radial-gradient(circle at 30% 30%,var(--accent),transparent 62%);opacity:.25;filter:blur(40px);animation:float 14s ease-in-out infinite alternate}
+@keyframes float{to{transform:translate(-8%,12%) scale(1.15) rotate(25deg)}}
+.facts{display:flex;flex-wrap:wrap;gap:16px 56px;margin-top:64px}
+.facts dt{font-size:28px;font-weight:700} .facts dd{color:var(--muted);font-size:14px}
+.marquee{overflow:hidden;border-block:1px solid var(--line);padding:18px 0}
+.track{display:flex;gap:48px;width:max-content;animation:scroll 30s linear infinite;font-size:clamp(24px,4vw,44px);font-weight:700;text-transform:uppercase;white-space:nowrap}
+.track span::after{content:"✦";color:var(--accent);margin-left:48px}
+@keyframes scroll{to{transform:translateX(-50%)}}
+.section{padding:clamp(56px,8vw,120px) var(--pad)} .narrow{max-width:760px;margin:0 auto}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:16px}
+.card{display:block;background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:16px;transition:transform .25s,border-color .25s}
+.card:hover{transform:translateY(-6px);border-color:var(--accent)} .card p{color:var(--muted);font-size:14px}
+.ph{aspect-ratio:4/5;border-radius:12px;margin-bottom:14px;background:linear-gradient(135deg,#1d1d21,#2a2a30)}
+.steps{list-style:none;padding:0;display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px}
+.steps li{border-top:1px solid var(--line);padding-top:20px;height:100%} .steps span{color:var(--accent);font-weight:700} .steps p{color:var(--muted);margin-top:8px}
+.form{display:grid;gap:16px;background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:clamp(20px,4vw,40px)}
+.form h2{font-size:clamp(24px,3vw,34px);margin-bottom:4px}
+.form label{display:grid;gap:6px;font-size:14px;color:var(--muted)}
+.form input:not([type=checkbox]),.form textarea{background:var(--bg);color:var(--fg);border:1px solid var(--line);border-radius:12px;padding:14px;font:inherit}
+.form .check{display:flex;gap:10px;align-items:center} .hp{position:absolute;left:-9999px}
+.ok{color:var(--accent)} .err{color:#ff6b6b}
+.footer{display:flex;flex-wrap:wrap;justify-content:space-between;gap:12px;padding:32px var(--pad);border-top:1px solid var(--line);color:var(--muted);font-size:14px}
+.reveal{opacity:0;transform:translateY(24px);transition:opacity .7s,transform .7s} .reveal.in{opacity:1;transform:none}
+@media (max-width:720px){.header nav{display:none}}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}.reveal{opacity:1;transform:none}}

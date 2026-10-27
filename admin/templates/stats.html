@@ -53,6 +53,12 @@
 
 <style>
   .inv-tabs { flex-wrap: wrap; overflow-x: visible; }
+  .qr-box { margin-top: 10px; }
+  .qr-box summary { cursor: pointer; list-style: none; display: inline-flex; padding: 7px 16px; border-radius: 999px; border: 1px solid var(--border-strong); font-size: 13px; font-weight: 600; }
+  .qr-box summary::-webkit-details-marker { display: none; }
+  .qr-body { margin-top: 10px; }
+  .qr-body img { display: block; background: #fff; border-radius: 12px; padding: 6px; }
+  .qr-actions { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
   .cost-form { display: flex; gap: 8px; margin-top: 8px; align-items: center; }
   .cost-form input { flex: 1; min-width: 0; }
   .cost-form .cost-cur { flex: 0 0 64px; text-align: center; }
@@ -102,7 +108,7 @@
       <span class="badge {{ 'off' if row.revoked else 'on' }}">{{ 'отозвана' if row.revoked else 'активна' }}</span>
     </div>
     <div class="meta">@{{ row.channel_username }}</div>
-    <div class="meta">переходы <span class="num-click">{{ row.clicks }}</span> (уник. {{ row.unique_clicks }}) · join <span class="num-join">{{ row.joins }}</span> · leave <span class="num-leave">{{ row.leaves }}</span> · now <span class="num-now">{{ row.joins - row.leaves }}</span>{% if row.conversion is not none %} · конв. {{ row.conversion }}%{% endif %}</div>
+    <div class="meta">переходы <span class="num-click">{{ row.clicks }}</span> (уник. {{ row.unique_clicks }}{% if row.qr_clicks %}, из них по QR {{ row.qr_clicks }}{% endif %}) · join <span class="num-join">{{ row.joins }}</span> · leave <span class="num-leave">{{ row.leaves }}</span> · now <span class="num-now">{{ row.joins - row.leaves }}</span>{% if row.conversion is not none %} · конв. {{ row.conversion }}%{% endif %}</div>
     {% if row.cost %}
     <div class="meta">
       реклама: <b>{{ row.cost.amount|round(2) }} {{ row.cost.currency }}</b>
@@ -118,6 +124,17 @@
       <button type="submit" class="secondary">Сохранить</button>
     </form>
     {% if not row.revoked %}
+    <details class="qr-box">
+      <summary class="secondary-btn">QR-код</summary>
+      <div class="qr-body">
+        <img data-src="/qr/{{ row.id }}.png" alt="QR-код ссылки {{ row.source_label or row.name }}" width="220" height="220">
+        <div class="meta" style="margin-top:6px;">Сканирование считается как переход «по QR» и ведёт на ту же инвайт-ссылку — подписки учитываются вместе со ссылкой.</div>
+        <div class="qr-actions">
+          <a class="btn secondary" href="/qr/{{ row.id }}.png?download=1">Скачать PNG</a>
+          <a class="btn secondary" href="/qr/{{ row.id }}.svg?download=1">Скачать SVG</a>
+        </div>
+      </div>
+    </details>
     <div class="meta" style="margin-top:8px;">Ссылка-счётчик (её ставьте в рекламу):</div>
     <div class="link-row">
       <span class="link-text" data-go-path="/go/{{ row.name }}">/go/{{ row.name }}</span>
@@ -153,6 +170,14 @@
     const form = document.getElementById('inv-custom-period-form');
     form.style.display = form.style.display === 'none' ? 'flex' : 'none';
   }
+
+  // QR-картинки грузим только при раскрытии блока, чтобы не генерировать их все при открытии страницы.
+  document.querySelectorAll('.qr-box').forEach((box) => {
+    box.addEventListener('toggle', () => {
+      const img = box.querySelector('img[data-src]');
+      if (box.open && img && !img.src) img.src = img.dataset.src;
+    });
+  });
 
   document.querySelectorAll('[data-go-path]').forEach((el) => {
     const url = location.origin + el.dataset.goPath;

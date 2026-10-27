@@ -343,6 +343,7 @@ class LinkClick(Base):
     invite_link_id: Mapped[int] = mapped_column(ForeignKey("invite_links.id"))
     clicked_at: Mapped[dt.datetime] = mapped_column(**_TZ_NOW)
     visitor_hash: Mapped[str] = mapped_column(String(64))  # sha256(ip + user-agent + секрет) — для «уникальных»
+    source: Mapped[str] = mapped_column(String(8), default="link", server_default="link")  # link | qr
 
     __table_args__ = (Index("ix_link_clicks_link_time", "invite_link_id", "clicked_at"),)
 

@@ -4,14 +4,16 @@ from __future__ import annotations
 import asyncio
 import datetime as dt
 import hashlib
+import io
 from collections import defaultdict
 from pathlib import Path
 
 from fastapi import FastAPI, Form, Request
-from fastapi.responses import PlainTextResponse, RedirectResponse
+from fastapi.responses import PlainTextResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from sqlalchemy import func, select
+import segno
+from sqlalchemy import case, func, select
 from sqlalchemy.orm import selectinload
 
 from admin import analytics as analytics_view
@@ -753,6 +755,36 @@ def _visitor_hash(request: Request) -> str:
     return hashlib.sha256(raw.encode()).hexdigest()
 
 
+def _public_origin(request: Request) -> str:
+    """Внешний адрес админки (за прокси Railway схема приходит в X-Forwarded-Proto)."""
+    scheme = "https" if auth.is_https(request) else request.url.scheme
+    host = request.headers.get("x-forwarded-host") or request.headers.get("host") or request.url.netloc
+    return f"{scheme}://{host}"
+
+
+@app.get("/qr/{link_id}.{fmt}")
+async def invite_link_qr(link_id: int, fmt: str, request: Request, download: int = 0):
+    """QR-код ссылки-счётчика: при сканировании открывается /go/<код>?s=qr — переход
+    записывается как «QR», а человек попадает на ту же инвайт-ссылку (подписки учитываются так же)."""
+    if fmt not in ("png", "svg"):
+        return PlainTextResponse("Формат не поддерживается", status_code=404)
+    async with session_scope() as session:
+        link = await session.get(InviteLink, link_id)
+    if link is None:
+        return PlainTextResponse("Ссылка не найдена", status_code=404)
+    target = f"{_public_origin(request)}/go/{link.name}?s=qr"
+    qr = segno.make(target, error='q', micro=False)
+    buf = io.BytesIO()
+    if fmt == "png":
+        qr.save(buf, kind="png", scale=12, border=4, dark="#000000", light="#ffffff")
+        media = "image/png"
+    else:
+        qr.save(buf, kind="svg", scale=10, border=4, dark="#000000", light="#ffffff", xmldecl=False)
+        media = "image/svg+xml"
+    headers = {"Content-Disposition": f'attachment; filename="qr_{link.name}.{fmt}"'} if download else {}
+    return Response(buf.getvalue(), media_type=media, headers=headers)
+
+
 @app.api_route("/go/{name}", methods=["GET", "HEAD"])
 async def track_invite_click(name: str, request: Request):
     """Публичная ссылка-счётчик: записывает переход и перенаправляет на инвайт-ссылку Telegram.
@@ -784,7 +816,13 @@ async def track_invite_click(name: str, request: Request):
                 )
             )
             if not recent:
-                session.add(LinkClick(invite_link_id=link.id, visitor_hash=visitor))
+                session.add(
+                    LinkClick(
+                        invite_link_id=link.id,
+                        visitor_hash=visitor,
+                        source="qr" if request.query_params.get("s") == "qr" else "link",
+                    )
+                )
 
     return RedirectResponse(target_url, status_code=302)
 
@@ -857,11 +895,18 @@ async def stats_page(
             counts_by_link.setdefault(link_id, {})[event_type] = cnt
 
         clicks_result = await session.execute(
-            select(LinkClick.invite_link_id, func.count(), func.count(func.distinct(LinkClick.visitor_hash)))
+            select(
+                LinkClick.invite_link_id,
+                func.count(),
+                func.count(func.distinct(LinkClick.visitor_hash)),
+                func.sum(case((LinkClick.source == "qr", 1), else_=0)),
+            )
             .where(*click_filters)
             .group_by(LinkClick.invite_link_id)
         )
-        clicks_by_link = {link_id: (total, uniq) for link_id, total, uniq in clicks_result.all()}
+        clicks_by_link = {
+            link_id: (total, uniq, int(qr or 0)) for link_id, total, uniq, qr in clicks_result.all()
+        }
 
         # Цена подписчика/перехода считается по всему времени ссылки (а не по выбранному периоду):
         # стоимость размещения — разовая, за всё время жизни рекламы.
@@ -886,7 +931,7 @@ async def stats_page(
         invite_stats = []
         for link in invite_links:
             link_counts = counts_by_link.get(link.id, {})
-            clicks, unique_clicks = clicks_by_link.get(link.id, (0, 0))
+            clicks, unique_clicks, qr_clicks = clicks_by_link.get(link.id, (0, 0, 0))
             joins = link_counts.get("join", 0)
             invite_stats.append(
                 {
@@ -897,6 +942,7 @@ async def stats_page(
                     "source_label": link.source_label,
                     "clicks": clicks,
                     "unique_clicks": unique_clicks,
+                    "qr_clicks": qr_clicks,
                     "conversion": round(joins / unique_clicks * 100) if unique_clicks else None,
                     "joins": joins,
                     "leaves": link_counts.get("leave", 0),

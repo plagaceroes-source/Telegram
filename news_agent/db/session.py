@@ -38,9 +38,25 @@ async def _widen_columns(conn) -> None:
             logger.info("Колонка %s.%s расширена до BIGINT", table, column)
 
 
+# Новые колонки в уже существующих таблицах: create_all их не добавляет.
+_ADD_COLUMNS = [("link_clicks", "source", "VARCHAR(8) NOT NULL DEFAULT 'link'")]
+
+
+async def _add_missing_columns(conn) -> None:
+    if conn.dialect.name != "postgresql":
+        return  # в SQLite (тесты/локально) таблицы создаются с нуля сразу с нужными колонками
+    for table, column, ddl in _ADD_COLUMNS:
+        await conn.execute(text(f'ALTER TABLE "{table}" ADD COLUMN IF NOT EXISTS "{column}" {ddl}'))
+
+
 async def init_db() -> None:
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+    try:
+        async with engine.begin() as conn:
+            await _add_missing_columns(conn)
+    except Exception:
+        logger.exception("Не удалось добавить недостающие колонки")
     try:
         async with engine.begin() as conn:
             await _widen_columns(conn)

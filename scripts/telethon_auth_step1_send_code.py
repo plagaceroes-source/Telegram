@@ -31,6 +31,15 @@ async def main() -> None:
     client = TelegramClient(session_path, settings.telegram_api_id, settings.telegram_api_hash)
     await client.connect()
     result = await client.send_code_request(phone)
+    sent_type = type(result.type).__name__
+    next_type = type(result.next_type).__name__ if getattr(result, "next_type", None) else "нет"
+    hint = {
+        "SentCodeTypeApp": "код в приложении Telegram, чат «Telegram» (Login code)",
+        "SentCodeTypeSms": "код SMS-ом на номер",
+        "SentCodeTypeCall": "код звонком на номер",
+        "SentCodeTypeFlashCall": "код по звонку-сбросу",
+    }.get(sent_type, "см. тип доставки")
+    print(f"CODE_DELIVERY type={sent_type} ({hint}); следующий способ: {next_type}; таймаут: {result.timeout}")
     print(f"PHONE_CODE_HASH_START {result.phone_code_hash} PHONE_CODE_HASH_END")
     await client.disconnect()
 

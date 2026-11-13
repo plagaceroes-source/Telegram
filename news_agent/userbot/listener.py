@@ -13,6 +13,7 @@ from pathlib import Path
 
 from sqlalchemy import func, select
 from telethon import TelegramClient, events
+from telethon.sessions import StringSession
 from telethon.tl.functions.channels import JoinChannelRequest
 
 from news_agent.bot.session import build_bot
@@ -46,9 +47,12 @@ class AccountWorker:
                 raise ValueError(f"Аккаунт юзербота {self.account_id} не найден в БД")
             session_name = account.session_name
 
-        session_path = os.path.join(settings.sessions_path, session_name)
-        Path(settings.sessions_path).mkdir(parents=True, exist_ok=True)
-        self.client = TelegramClient(session_path, settings.telegram_api_id, settings.telegram_api_hash)
+        if settings.userbot_session_string:
+            session = StringSession(settings.userbot_session_string)
+        else:
+            session = os.path.join(settings.sessions_path, session_name)
+            Path(settings.sessions_path).mkdir(parents=True, exist_ok=True)
+        self.client = TelegramClient(session, settings.telegram_api_id, settings.telegram_api_hash)
 
         # client.start() без авторизованной сессии пытается спросить телефон через input(),
         # а на хостинге консоли нет — сервис падает с невнятной EOFError. Проверяем явно.
@@ -59,7 +63,7 @@ class AccountWorker:
                 f"Аккаунт {self.account_id}: сессия Telegram недействительна (обычно после «Завершить все "
                 "сеансы» в Telegram или смены пароля). Нужна повторная авторизация: "
                 "scripts/telethon_auth_step1_send_code.py, затем scripts/telethon_auth_step2_sign_in.py "
-                f"(файл сессии: {session_name})."
+                f"(файл сессии: {session_name}) либо задайте переменную USERBOT_SESSION_STRING."
             )
         logger.info("Аккаунт %s: сессия запущена", self.account_id)
 

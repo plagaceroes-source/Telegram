@@ -75,6 +75,25 @@ python scripts/run_admin.py          # веб-админка на http://localho
 #    /add_target — см. /help в боте), либо через веб-админку.
 ```
 
+### Вход юзербота сессией-строкой (если код входа не приходит)
+
+Код входа при запуске на хостинге иногда не доходит (например, нет SIM). Тогда войдите один раз
+на своём компьютере и передайте сервису готовую сессию переменной `USERBOT_SESSION_STRING`:
+
+```bash
+python3 -m pip install telethon
+python3 - <<'PY'
+from telethon.sync import TelegramClient
+from telethon.sessions import StringSession
+api_id = int(input("api_id: ")); api_hash = input("api_hash: ")
+with TelegramClient(StringSession(), api_id, api_hash) as client:  # спросит телефон, код, пароль 2FA
+    print(client.session.save())
+PY
+```
+
+Напечатанная строка — полный доступ к аккаунту: хранить только в переменной сервиса `userbot-1`,
+никому не пересылать. Если переменная задана, файл сессии на диске не используется.
+
 ### Разовый снепшот статистики подписчиков
 
 ```bash

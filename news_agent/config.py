@@ -81,6 +81,9 @@ class Settings:
 
     media_storage_path: str = field(default_factory=lambda: os.getenv("MEDIA_STORAGE_PATH", "./storage/incoming"))
     sessions_path: str = field(default_factory=lambda: os.getenv("SESSIONS_PATH", "./storage/sessions"))
+    # Готовая сессия Telethon одной строкой (StringSession). Если задана, юзербот входит по ней,
+    # а файл сессии на диске не нужен. Это полный доступ к аккаунту — хранить как секрет.
+    userbot_session_string: str = field(default_factory=lambda: os.getenv("USERBOT_SESSION_STRING", ""))
 
     admin_secret_key: str = field(default_factory=lambda: os.getenv("ADMIN_SECRET_KEY", "change-me"))
     # Пароль входа в админку. Пустой = вход закрыт для всех (fail-closed), а не открыт.

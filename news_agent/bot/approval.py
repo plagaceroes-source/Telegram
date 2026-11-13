@@ -1,17 +1,14 @@
-"""Approval bot: карточки черновиков + кнопки Опубликовать/Редактировать/Отклонить (ТЗ 2.3)."""
+"""Approval bot: карточки с переведёнными постами. Кнопок нет — текст идёт блоком кода и
+копируется одним нажатием; обработчики pub/rej/edit остались для старых карточек в чате (ТЗ 2.3)."""
 from __future__ import annotations
 
 import asyncio
+import html
 import logging
 
 from aiogram import Bot, Dispatcher, F, Router
-from aiogram.types import (
-    CallbackQuery,
-    ForceReply,
-    InlineKeyboardButton,
-    InlineKeyboardMarkup,
-    Message,
-)
+from aiogram.enums import ParseMode
+from aiogram.types import CallbackQuery, ForceReply, LinkPreviewOptions, Message
 from sqlalchemy import select
 
 from news_agent.bot import commands as admin_commands
@@ -19,7 +16,7 @@ from news_agent.bot import force_sub
 from news_agent.bot.publish import publish_draft, reject_draft
 from news_agent.bot.session import build_bot
 from news_agent.config import settings
-from news_agent.db.models import DraftPost, RawPost, Source, TargetChannel
+from news_agent.db.models import DraftPost, RawPost, Source
 from news_agent.db.session import session_scope
 from news_agent.reports.scheduler import start_reports_scheduler
 from news_agent.services.media_relay import CAPTION_LIMIT, resolve_media
@@ -42,52 +39,31 @@ def _approver_filter(message_or_query) -> bool:
     return bool(user) and _is_approver(user.id)
 
 
-async def _build_card_keyboard(draft_id: int) -> InlineKeyboardMarkup:
-    async with session_scope() as session:
-        result = await session.execute(select(TargetChannel).where(TargetChannel.active.is_(True)))
-        targets = list(result.scalars())
-
-    rows: list[list[InlineKeyboardButton]] = []
-    if len(targets) <= 1:
-        target_id = targets[0].id if targets else 0
-        rows.append([InlineKeyboardButton(text="✅ Опубликовать", callback_data=f"pub:{draft_id}:{target_id}")])
-    else:
-        for target in targets:
-            rows.append(
-                [
-                    InlineKeyboardButton(
-                        text=f"✅ В «{target.title or target.username}»",
-                        callback_data=f"pub:{draft_id}:{target.id}",
-                    )
-                ]
-            )
-    rows.append(
-        [
-            InlineKeyboardButton(text="✏️ Редактировать", callback_data=f"edit:{draft_id}"),
-            InlineKeyboardButton(text="❌ Отклонить", callback_data=f"rej:{draft_id}"),
-        ]
-    )
-    return InlineKeyboardMarkup(inline_keyboard=rows)
-
-
-async def _card_caption(draft: DraftPost, raw_post: RawPost, source: Source | None) -> str:
-    source_label = source.title or source.username if source else "неизвестный источник"
-    header = f"📰 Источник: {source_label}\n\n"
-    return header + draft.translated_text
-
-
 MAX_CARD_ATTEMPTS = 3  # после стольких неудачных циклов рассылку карточки прекращаем
 TEXT_LIMIT = 4000  # лимит текстового сообщения Telegram — 4096, берём с запасом
 STATUS_CARD_FAILED = "card_failed"
+STATUS_DELIVERED = "delivered"  # карточка отправлена; кнопок решения больше нет
 
 _card_failures: dict[int, int] = {}
 # (draft_id, chat_id): медиа без подписи уже отправлено, а текст ещё нет. При повторной
 # попытке шлём только текст — иначе каждая неудача плодила бы ещё одно «голое» видео.
 _media_sent: set[tuple[int, int]] = set()
 
+_NO_PREVIEW = LinkPreviewOptions(is_disabled=True)
 
-def _clip(text: str) -> str:
-    return text if len(text) <= TEXT_LIMIT else text[: TEXT_LIMIT - 1] + "…"
+
+def _card_html(header: str, body: str, note: str = "") -> str:
+    """Источник отдельной строкой, сам текст — блоком кода: на телефоне и в десктопе блок
+    копируется одним нажатием. Обрезаем до экранирования, чтобы не разорвать HTML-сущность."""
+    budget = TEXT_LIMIT - len(header) - len(note) - 4
+    if len(body) > budget:
+        body = body[: max(0, budget - 1)] + "…"
+    text = html.escape(header, quote=False)
+    if body:
+        text += f"\n<pre>{html.escape(body, quote=False)}</pre>"
+    if note:
+        text += f"\n{html.escape(note, quote=False)}"
+    return text
 
 
 async def send_draft_card(bot: Bot, draft_id: int) -> None:
@@ -104,39 +80,42 @@ async def send_draft_card(bot: Bot, draft_id: int) -> None:
             return
         raw_post = await session.get(RawPost, draft.raw_post_id)
         source = await session.get(Source, raw_post.source_id) if raw_post else None
-        caption = await _card_caption(draft, raw_post, source)
+        source_label = (source.title or source.username) if source else "неизвестный источник"
+        body = draft.translated_text.strip()
         media_paths = list(draft.media_paths)
 
-    keyboard = await _build_card_keyboard(draft_id)
+    header = f"📰 Источник: {source_label}"
+    note = f"(+{len(media_paths) - 1} медиафайлов)" if len(media_paths) > 1 else ""
+    card = _card_html(header, body, note)
+    fits_caption = len(header) + len(body) + len(note) + 3 <= CAPTION_LIMIT
 
     delivered = False
     last_error = ""
     for chat_id in recipients:
         try:
             if not media_paths:
-                message = await bot.send_message(chat_id=chat_id, text=_clip(caption), reply_markup=keyboard)
+                message = await bot.send_message(
+                    chat_id=chat_id, text=card, parse_mode=ParseMode.HTML, link_preview_options=_NO_PREVIEW
+                )
             else:
                 media_type, media = resolve_media(media_paths[0])
-                full_caption = caption if len(media_paths) == 1 else caption + f"\n\n(+{len(media_paths) - 1} медиафайлов)"
-                if len(full_caption) > CAPTION_LIMIT:
-                    # Не влезает в лимит подписи к медиа — шлём медиа без подписи,
-                    # а текст с кнопками отдельным сообщением (иначе Telegram
-                    # отклонит весь запрос, и карточка не дойдёт вовсе).
+                if not fits_caption:
+                    # Не влезает в лимит подписи к медиа (1024) — шлём медиа без подписи,
+                    # а текст отдельным сообщением (иначе Telegram отклонит весь запрос,
+                    # и карточка не дойдёт вовсе).
                     if (draft_id, chat_id) not in _media_sent:
                         if media_type == "video":
                             await bot.send_video(chat_id=chat_id, video=media)
                         else:
                             await bot.send_photo(chat_id=chat_id, photo=media)
                         _media_sent.add((draft_id, chat_id))
-                    message = await bot.send_message(chat_id=chat_id, text=_clip(full_caption), reply_markup=keyboard)
+                    message = await bot.send_message(
+                        chat_id=chat_id, text=card, parse_mode=ParseMode.HTML, link_preview_options=_NO_PREVIEW
+                    )
                 elif media_type == "video":
-                    message = await bot.send_video(
-                        chat_id=chat_id, video=media, caption=full_caption, reply_markup=keyboard
-                    )
+                    message = await bot.send_video(chat_id=chat_id, video=media, caption=card, parse_mode=ParseMode.HTML)
                 else:
-                    message = await bot.send_photo(
-                        chat_id=chat_id, photo=media, caption=full_caption, reply_markup=keyboard
-                    )
+                    message = await bot.send_photo(chat_id=chat_id, photo=media, caption=card, parse_mode=ParseMode.HTML)
         except Exception as e:
             logger.exception("Не удалось отправить карточку черновика %s в чат %s", draft_id, chat_id)
             last_error = f"{type(e).__name__}: {e}"[:300]
@@ -149,6 +128,7 @@ async def send_draft_card(bot: Bot, draft_id: int) -> None:
             if db_draft:
                 db_draft.approval_chat_id = chat_id
                 db_draft.approval_message_id = message.message_id
+                db_draft.status = STATUS_DELIVERED
 
     if delivered:
         _card_failures.pop(draft_id, None)

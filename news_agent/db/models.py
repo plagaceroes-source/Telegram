@@ -112,7 +112,7 @@ class DraftPost(Base):
     translated_text: Mapped[str] = mapped_column(default="")
     media_paths: Mapped[list[str]] = mapped_column(JSON, default=list)
     status: Mapped[str] = mapped_column(String(16), default="pending_approval")
-    # pending_approval / approved / rejected / published
+    # pending_approval / delivered (карточка отправлена, кнопок нет) / approved / rejected / published / card_failed
     target_channel_id: Mapped[int | None] = mapped_column(ForeignKey("target_channels.id"), nullable=True)
     approval_chat_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     approval_message_id: Mapped[int | None] = mapped_column(nullable=True)

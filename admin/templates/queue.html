@@ -9,7 +9,7 @@
 <div class="list-item">
   <div class="row">
     <span class="title">{{ d.source_label }}</span>
-    <span class="badge {{ 'on' if d.status in ('approved','published') else ('off' if d.status == 'rejected' else 'warn') }}">{{ d.status }}</span>
+    <span class="badge {{ 'on' if d.status in ('approved','published','delivered') else ('off' if d.status == 'rejected' else 'warn') }}">{{ d.status }}</span>
   </div>
   <div class="meta">{{ d.translated_text[:140] }}{{ '…' if d.translated_text|length > 140 }}</div>
   <div class="meta">

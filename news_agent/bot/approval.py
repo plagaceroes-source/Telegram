@@ -76,9 +76,28 @@ async def _card_caption(draft: DraftPost, raw_post: RawPost, source: Source | No
     return header + draft.translated_text
 
 
+MAX_CARD_ATTEMPTS = 3  # после стольких неудачных циклов рассылку карточки прекращаем
+TEXT_LIMIT = 4000  # лимит текстового сообщения Telegram — 4096, берём с запасом
+STATUS_CARD_FAILED = "card_failed"
+
+_card_failures: dict[int, int] = {}
+# (draft_id, chat_id): медиа без подписи уже отправлено, а текст ещё нет. При повторной
+# попытке шлём только текст — иначе каждая неудача плодила бы ещё одно «голое» видео.
+_media_sent: set[tuple[int, int]] = set()
+
+
+def _clip(text: str) -> str:
+    return text if len(text) <= TEXT_LIMIT else text[: TEXT_LIMIT - 1] + "…"
+
+
 async def send_draft_card(bot: Bot, draft_id: int) -> None:
     """Отправляет карточку черновика: одну в групповой чат (APPROVAL_CHAT_ID),
     либо каждому утверждающему лично (APPROVER_CHAT_IDS), если группа не задана."""
+    recipients = [settings.approval_chat_id] if settings.approval_chat_id else (settings.approver_chat_ids or [])
+    if not recipients:
+        logger.warning("Некому слать карточку черновика %s: не заданы APPROVAL_CHAT_ID/APPROVER_CHAT_IDS", draft_id)
+        return
+
     async with session_scope() as session:
         draft = await session.get(DraftPost, draft_id)
         if draft is None:
@@ -89,41 +108,79 @@ async def send_draft_card(bot: Bot, draft_id: int) -> None:
         media_paths = list(draft.media_paths)
 
     keyboard = await _build_card_keyboard(draft_id)
-    recipients = [settings.approval_chat_id] if settings.approval_chat_id else (settings.approver_chat_ids or [])
 
+    delivered = False
+    last_error = ""
     for chat_id in recipients:
         try:
             if not media_paths:
-                message = await bot.send_message(chat_id=chat_id, text=caption, reply_markup=keyboard)
+                message = await bot.send_message(chat_id=chat_id, text=_clip(caption), reply_markup=keyboard)
             else:
-                media_type, source = resolve_media(media_paths[0])
+                media_type, media = resolve_media(media_paths[0])
                 full_caption = caption if len(media_paths) == 1 else caption + f"\n\n(+{len(media_paths) - 1} медиафайлов)"
                 if len(full_caption) > CAPTION_LIMIT:
                     # Не влезает в лимит подписи к медиа — шлём медиа без подписи,
                     # а текст с кнопками отдельным сообщением (иначе Telegram
                     # отклонит весь запрос, и карточка не дойдёт вовсе).
-                    if media_type == "video":
-                        await bot.send_video(chat_id=chat_id, video=source)
-                    else:
-                        await bot.send_photo(chat_id=chat_id, photo=source)
-                    message = await bot.send_message(chat_id=chat_id, text=full_caption, reply_markup=keyboard)
+                    if (draft_id, chat_id) not in _media_sent:
+                        if media_type == "video":
+                            await bot.send_video(chat_id=chat_id, video=media)
+                        else:
+                            await bot.send_photo(chat_id=chat_id, photo=media)
+                        _media_sent.add((draft_id, chat_id))
+                    message = await bot.send_message(chat_id=chat_id, text=_clip(full_caption), reply_markup=keyboard)
                 elif media_type == "video":
                     message = await bot.send_video(
-                        chat_id=chat_id, video=source, caption=full_caption, reply_markup=keyboard
+                        chat_id=chat_id, video=media, caption=full_caption, reply_markup=keyboard
                     )
                 else:
                     message = await bot.send_photo(
-                        chat_id=chat_id, photo=source, caption=full_caption, reply_markup=keyboard
+                        chat_id=chat_id, photo=media, caption=full_caption, reply_markup=keyboard
                     )
-        except Exception:
+        except Exception as e:
             logger.exception("Не удалось отправить карточку черновика %s в чат %s", draft_id, chat_id)
+            last_error = f"{type(e).__name__}: {e}"[:300]
             continue
 
+        _media_sent.discard((draft_id, chat_id))
+        delivered = True
         async with session_scope() as session:
             db_draft = await session.get(DraftPost, draft_id)
             if db_draft:
                 db_draft.approval_chat_id = chat_id
                 db_draft.approval_message_id = message.message_id
+
+    if delivered:
+        _card_failures.pop(draft_id, None)
+        return
+
+    # Рассылка идёт каждые несколько секунд, пока карточка не отправлена, — без предела
+    # сбой превращается в бесконечный спам в чат апрува.
+    _card_failures[draft_id] = _card_failures.get(draft_id, 0) + 1
+    if _card_failures[draft_id] >= MAX_CARD_ATTEMPTS:
+        await _give_up_on_card(bot, draft_id, recipients, last_error)
+
+
+async def _give_up_on_card(bot: Bot, draft_id: int, recipients: list[int], error: str) -> None:
+    _card_failures.pop(draft_id, None)
+    async with session_scope() as session:
+        draft = await session.get(DraftPost, draft_id)
+        if draft is not None and draft.status == "pending_approval":
+            draft.status = STATUS_CARD_FAILED
+    logger.error("Карточка черновика %s не отправлена после %d попыток, рассылка остановлена: %s",
+                 draft_id, MAX_CARD_ATTEMPTS, error)
+    for chat_id in recipients:
+        _media_sent.discard((draft_id, chat_id))
+        try:
+            await bot.send_message(
+                chat_id=chat_id,
+                text=(
+                    f"⚠ Не удалось отправить карточку черновика #{draft_id} за {MAX_CARD_ATTEMPTS} попытки — "
+                    f"рассылку по нему остановил, чтобы не засорять чат.\nПричина: {error}"
+                ),
+            )
+        except Exception:
+            logger.exception("Не удалось сообщить о сбое карточки %s в чат %s", draft_id, chat_id)
 
 
 async def poll_pending_drafts(bot: Bot, interval: int = 10) -> None:

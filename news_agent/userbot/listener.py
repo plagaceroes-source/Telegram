@@ -50,7 +50,17 @@ class AccountWorker:
         Path(settings.sessions_path).mkdir(parents=True, exist_ok=True)
         self.client = TelegramClient(session_path, settings.telegram_api_id, settings.telegram_api_hash)
 
-        await self.client.start()
+        # client.start() без авторизованной сессии пытается спросить телефон через input(),
+        # а на хостинге консоли нет — сервис падает с невнятной EOFError. Проверяем явно.
+        await self.client.connect()
+        if not await self.client.is_user_authorized():
+            await self.client.disconnect()
+            raise SystemExit(
+                f"Аккаунт {self.account_id}: сессия Telegram недействительна (обычно после «Завершить все "
+                "сеансы» в Telegram или смены пароля). Нужна повторная авторизация: "
+                "scripts/telethon_auth_step1_send_code.py, затем scripts/telethon_auth_step2_sign_in.py "
+                f"(файл сессии: {session_name})."
+            )
         logger.info("Аккаунт %s: сессия запущена", self.account_id)
 
         self.client.add_event_handler(self._on_album, events.Album())

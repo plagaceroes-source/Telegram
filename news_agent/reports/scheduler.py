@@ -19,6 +19,7 @@ from news_agent.db.session import session_scope
 from news_agent.reports.daily import send_daily_report
 from news_agent.reports.monthly import send_monthly_report
 from news_agent.reports.period import REPORT_TZ, previous_month
+from news_agent.stats.snapshot import take_snapshot
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +27,18 @@ logger = logging.getLogger(__name__)
 # раз в 15 минут, и в 23:55 пост, вышедший в последние минуты суток, в отчёт ещё не попадал.
 REPORT_HOUR = 0
 REPORT_MINUTE = 20
+
+
+async def _midnight_snapshot(bot: Bot) -> None:
+    """Снимок числа подписчиков ровно на границу суток (записывается под временем 00:00),
+    чтобы в отчёте «подписчики на конец дня» совпадали с моментом, до которого считаются посты.
+    Обычные снимки идут раз в час в произвольную минуту и могли отставать почти на час."""
+    boundary = dt.datetime.now(REPORT_TZ).replace(hour=0, minute=0, second=0, microsecond=0)
+    try:
+        taken = await take_snapshot(bot, snapshot_at=boundary.astimezone(dt.timezone.utc))
+        logger.info("Полуночный снимок подписчиков снят для %d каналов", taken)
+    except Exception:
+        logger.exception("Не удалось снять полуночный снимок подписчиков")
 
 
 async def _already_sent(kind: str, period_key: str) -> bool:
@@ -74,6 +87,13 @@ def start_reports_scheduler(bot: Bot) -> AsyncIOScheduler | None:
         return None
 
     scheduler = AsyncIOScheduler(timezone=REPORT_TZ)
+    scheduler.add_job(
+        _midnight_snapshot,
+        CronTrigger(hour=0, minute=0, second=5, timezone=REPORT_TZ),
+        args=[bot],
+        id="midnight_snapshot",
+        misfire_grace_time=600,
+    )
     scheduler.add_job(
         _run_daily,
         CronTrigger(hour=REPORT_HOUR, minute=REPORT_MINUTE, timezone=REPORT_TZ),

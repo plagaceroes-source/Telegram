@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import datetime as dt
 import logging
 
 from aiogram import Bot
@@ -14,8 +15,12 @@ from news_agent.db.session import session_scope
 logger = logging.getLogger(__name__)
 
 
-async def take_snapshot(bot: Bot) -> int:
-    """Снимает снепшот getChatMemberCount для всех активных целевых каналов."""
+async def take_snapshot(bot: Bot, snapshot_at: dt.datetime | None = None) -> int:
+    """Снимает снепшот getChatMemberCount для всех активных целевых каналов.
+
+    snapshot_at — под каким временем записать снимок (по умолчанию «сейчас»). Нужен
+    полуночному снимку: он записывается ровно на границу суток, чтобы отчёт брал
+    число подписчиков именно на 00:00, а не на ближайший часовой снимок."""
     async with session_scope() as session:
         result = await session.execute(select(TargetChannel).where(TargetChannel.active.is_(True)))
         targets = list(result.scalars())
@@ -30,7 +35,10 @@ async def take_snapshot(bot: Bot) -> int:
             continue
 
         async with session_scope() as session:
-            session.add(ChannelStatsDaily(target_channel_id=target.id, subscriber_count=count))
+            row = ChannelStatsDaily(target_channel_id=target.id, subscriber_count=count)
+            if snapshot_at is not None:
+                row.snapshot_at = snapshot_at
+            session.add(row)
         taken += 1
 
     return taken

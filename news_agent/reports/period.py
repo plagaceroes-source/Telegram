@@ -25,6 +25,23 @@ def month_bounds_utc(year: int, month: int) -> tuple[dt.datetime, dt.datetime]:
     return start_local.astimezone(dt.timezone.utc), end_local.astimezone(dt.timezone.utc)
 
 
+def incomplete_data_note(last_sync: dt.datetime | None, period_end: dt.datetime) -> str | None:
+    """Пост попадает в отчёт только после того, как его скопирует в БД юзербот (раз в несколько
+    минут). Если последний сбор был раньше конца периода, последние посты периода могли не
+    попасть в отчёт — об этом нужно сказать, а не молча отдавать неполные цифры."""
+    if last_sync is None:
+        return "⚠ Данные по постам могут быть неполными: сбор постов канала ещё не выполнялся."
+    if last_sync.tzinfo is None:
+        last_sync = last_sync.replace(tzinfo=dt.timezone.utc)
+    if last_sync >= period_end:
+        return None
+    return (
+        "⚠ Данные по постам могут быть неполными: последний сбор постов канала был "
+        f"{last_sync.astimezone(REPORT_TZ):%d.%m %H:%M}, раньше конца периода — "
+        "последние посты могли не попасть в отчёт."
+    )
+
+
 def previous_month(year: int, month: int) -> tuple[int, int]:
     if month == 1:
         return year - 1, 12

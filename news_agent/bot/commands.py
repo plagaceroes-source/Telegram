@@ -5,6 +5,7 @@
 """
 from __future__ import annotations
 
+import datetime as dt
 import logging
 
 from aiogram import F, Router
@@ -15,6 +16,9 @@ from sqlalchemy import select
 from news_agent.config import settings
 from news_agent.db.models import GatedGroup, InviteLink, Source, TargetChannel, UserbotAccount
 from news_agent.db.session import session_scope
+from news_agent.reports.daily import send_daily_report
+from news_agent.reports.monthly import send_monthly_report
+from news_agent.reports.period import REPORT_TZ
 
 logger = logging.getLogger(__name__)
 
@@ -46,6 +50,7 @@ async def cmd_help(message: Message) -> None:
         "/add_gated_group <group_chat_id> <target_id> <title...> — включить force-sub в группе\n"
         "/list_gated_groups — список групп с force-sub\n"
         "/pause_gated_group <id> / /resume_gated_group <id>\n"
+        "/report [ГГГГ-ММ-ДД | ГГГГ-ММ] — выслать отчёт за день (по умолчанию вчера) или за месяц\n"
         "/rename_gated_group <id> <название> — переименовать группу\n"
         "/chatid — узнать chat_id текущего чата (например, для REPORTS_CHAT_ID)\n"
     )
@@ -398,3 +403,31 @@ async def _set_gated_group_active(message: Message, command: CommandObject, acti
             return
         gated.active = active
     await message.reply(f"Force-sub для группы #{gated_id} теперь {'включён' if active else 'выключен'}.")
+
+
+@router.message(Command("report"))
+async def cmd_report(message: Message, command: CommandObject) -> None:
+    """Повторно отправляет отчёт в чат отчётов: за день (по умолчанию вчера) или за месяц (ГГГГ-ММ).
+    Нужна, когда отчёт ушёл неполным (например, пока не работал юзербот) или не ушёл вовсе."""
+    if not settings.reports_chat_id:
+        await message.reply("REPORTS_CHAT_ID не задан — отчёты отключены.")
+        return
+    arg = (command.args or "").strip()
+    try:
+        if len(arg) == 7:
+            year, month = (int(x) for x in arg.split("-"))
+            dt.date(year, month, 1)  # ValueError для несуществующего месяца (например, 2026-13)
+            await send_monthly_report(message.bot, year, month)
+            sent = f"за {month:02d}.{year}"
+        else:
+            day = dt.date.fromisoformat(arg) if arg else dt.datetime.now(REPORT_TZ).date() - dt.timedelta(days=1)
+            await send_daily_report(message.bot, day)
+            sent = f"за {day:%d.%m.%Y}"
+    except ValueError:
+        await message.reply("Формат: /report 2026-11-13 (день) или /report 2026-11 (месяц). Без аргумента — за вчера.")
+        return
+    except Exception:
+        logger.exception("Не удалось отправить отчёт по команде")
+        await message.reply("Не удалось отправить отчёт, смотрите логи.")
+        return
+    await message.reply(f"Отчёт {sent} отправлен в чат отчётов.")

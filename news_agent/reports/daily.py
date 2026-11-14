@@ -12,7 +12,7 @@ from news_agent.db.session import session_scope
 from news_agent.reports import data
 from news_agent.reports.format import fmt_num
 from news_agent.reports.pdf import render_daily_pdf
-from news_agent.reports.period import REPORT_TZ, day_bounds_utc
+from news_agent.reports.period import REPORT_TZ, day_bounds_utc, incomplete_data_note
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +35,7 @@ async def _gather_daily_data(session, day: dt.date) -> dict:
         "leaves": leaves,
         "joins_by_source": joins_by_source,
         "posts": posts,
+        "data_note": incomplete_data_note(await data.last_posts_sync(session, target_ids), until),
     }
 
 
@@ -50,6 +51,8 @@ async def send_daily_report(bot: Bot, day: dt.date) -> None:
         f"Постов: {fmt_num(d['posts_count'])} · Подписчики: {fmt_num(d['end_subs'])} "
         f"({'+' if delta >= 0 else '−'}{fmt_num(abs(delta))})"
     )
+    if d["data_note"]:
+        caption += f"\n{d['data_note']}"
 
     pdf_bytes = render_daily_pdf(day, d, REPORT_TZ)
     await bot.send_document(

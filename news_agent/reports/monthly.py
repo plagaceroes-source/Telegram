@@ -12,7 +12,7 @@ from news_agent.db.session import session_scope
 from news_agent.reports import data
 from news_agent.reports.format import fmt_num
 from news_agent.reports.pdf import render_monthly_pdf
-from news_agent.reports.period import REPORT_TZ, month_bounds_utc, previous_month
+from news_agent.reports.period import REPORT_TZ, incomplete_data_note, month_bounds_utc, previous_month
 
 logger = logging.getLogger(__name__)
 
@@ -58,6 +58,7 @@ async def _gather_monthly_data(session, year: int, month: int) -> dict:
         "prev_year": prev_year,
         "prev_month": prev_month,
         "top_posts": top_posts[:TOP_POSTS_LIMIT],
+        "data_note": incomplete_data_note(await data.last_posts_sync(session, target_ids), until),
     }
 
 
@@ -75,6 +76,8 @@ async def send_monthly_report(bot: Bot, year: int, month: int) -> None:
         f"Постов: {fmt_num(cur['posts_count'])} · Подписчики: {fmt_num(cur['end_subs'])} "
         f"({'+' if cur['growth'] >= 0 else '−'}{fmt_num(abs(cur['growth']))})"
     )
+    if g["data_note"]:
+        caption += f"\n{g['data_note']}"
 
     pdf_bytes = render_monthly_pdf(
         year, month, month_name, prev_month_name, g["prev_year"], cur, g["prev"], g["top_posts"], REPORT_TZ

@@ -40,6 +40,16 @@ async def subscriber_count_at(session, target_ids: list[int], at: dt.datetime) -
     return total
 
 
+async def last_posts_sync(session, target_ids: list[int]) -> dt.datetime | None:
+    """Когда зеркало постов обновлялось в последний раз: каждая синхронизация проставляет
+    updated_at всем постам окна, так что максимум — это время последнего успешного сбора."""
+    if not target_ids:
+        return None
+    return await session.scalar(
+        select(func.max(ChannelPost.updated_at)).where(ChannelPost.target_channel_id.in_(target_ids))
+    )
+
+
 async def published_posts_count(session, target_ids: list[int], since: dt.datetime, until: dt.datetime) -> int:
     """Число реальных постов канала за период (альбом — один пост, вне зависимости от того,
     опубликован пост через систему или вручную)."""

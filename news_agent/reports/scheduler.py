@@ -18,12 +18,14 @@ from news_agent.db.models import ReportLog
 from news_agent.db.session import session_scope
 from news_agent.reports.daily import send_daily_report
 from news_agent.reports.monthly import send_monthly_report
-from news_agent.reports.period import REPORT_TZ
+from news_agent.reports.period import REPORT_TZ, previous_month
 
 logger = logging.getLogger(__name__)
 
-REPORT_HOUR = 23
-REPORT_MINUTE = 55
+# Отчёт уходит сразу после полуночи за ПРОШЕДШИЕ сутки: юзербот копирует посты канала в БД
+# раз в 15 минут, и в 23:55 пост, вышедший в последние минуты суток, в отчёт ещё не попадал.
+REPORT_HOUR = 0
+REPORT_MINUTE = 20
 
 
 async def _already_sent(kind: str, period_key: str) -> bool:
@@ -40,12 +42,12 @@ async def _mark_sent(kind: str, period_key: str) -> None:
 
 
 async def _run_daily(bot: Bot) -> None:
-    today = dt.datetime.now(REPORT_TZ).date()
-    period_key = today.isoformat()
+    day = dt.datetime.now(REPORT_TZ).date() - dt.timedelta(days=1)
+    period_key = day.isoformat()
     if await _already_sent("daily", period_key):
         return
     try:
-        await send_daily_report(bot, today)
+        await send_daily_report(bot, day)
     except Exception:
         logger.exception("Не удалось отправить ежедневный отчёт за %s", period_key)
         return
@@ -54,11 +56,12 @@ async def _run_daily(bot: Bot) -> None:
 
 async def _run_monthly(bot: Bot) -> None:
     today = dt.datetime.now(REPORT_TZ).date()
-    period_key = f"{today.year:04d}-{today.month:02d}"
+    year, month = previous_month(today.year, today.month)
+    period_key = f"{year:04d}-{month:02d}"
     if await _already_sent("monthly", period_key):
         return
     try:
-        await send_monthly_report(bot, today.year, today.month)
+        await send_monthly_report(bot, year, month)
     except Exception:
         logger.exception("Не удалось отправить месячный отчёт за %s", period_key)
         return
@@ -80,14 +83,14 @@ def start_reports_scheduler(bot: Bot) -> AsyncIOScheduler | None:
     )
     scheduler.add_job(
         _run_monthly,
-        CronTrigger(day="last", hour=REPORT_HOUR, minute=REPORT_MINUTE, timezone=REPORT_TZ),
+        CronTrigger(day=1, hour=REPORT_HOUR, minute=REPORT_MINUTE, timezone=REPORT_TZ),
         args=[bot],
         id="monthly_report",
         misfire_grace_time=600,
     )
     scheduler.start()
     logger.info(
-        "Планировщик отчётов запущен: ежедневно и в последний день месяца в %02d:%02d (%s)",
+        "Планировщик отчётов запущен: ежедневно в %02d:%02d (%s) за прошедшие сутки, 1-го числа — за прошлый месяц",
         REPORT_HOUR,
         REPORT_MINUTE,
         settings.reports_timezone,

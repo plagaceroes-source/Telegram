@@ -137,14 +137,14 @@ footer a:hover{text-decoration:underline;text-decoration-color:var(--yellow)}
 footer div:first-child{display:flex;gap:18px;flex-wrap:wrap}
 
 @media(max-width:900px){
-  .site-header{display:grid;grid-template-columns:1fr auto;grid-template-areas:"logo online" "nav nav" "btn btn";
+  .site-header{display:grid;grid-template-columns:1fr auto;grid-template-areas:"logo nav" "logo online" "btn btn";
     min-height:0;padding:22px var(--gutter) 22px;gap:10px 14px;align-items:start}
-  .logo{grid-area:logo;align-self:center;font-size:clamp(24px,7vw,34px)}
-  .site-header nav{grid-area:nav;margin:0;padding:0;border:0;gap:22px;justify-self:stretch;justify-content:space-between}
-  .site-header nav a{font-size:16px;padding:0}
+  .logo{grid-area:logo;align-self:center;font-size:clamp(19px,5.9vw,32px)}
+  .site-header nav{grid-area:nav;margin:0;padding:0;border:0;gap:clamp(8px,3vw,14px);justify-self:end;white-space:nowrap}
+  .site-header nav a{font-size:clamp(12px,3.55vw,16px);padding:0}
   .site-header>*{min-width:0}
-  .site-header .online{grid-area:online;justify-self:end;align-self:center;padding:3px 10px;font-size:13px;background:transparent}
-  .replace-button{grid-area:btn;min-height:62px;font-size:clamp(18px,5.2vw,24px);justify-content:space-between;padding:14px 22px}
+  .site-header .online{grid-area:online;justify-self:end;align-self:start;padding:3px 10px;font-size:13px;background:transparent}
+  .replace-button{grid-area:btn;min-height:62px;font-size:clamp(15px,4.7vw,24px);justify-content:space-between;padding:14px 22px}
   .hero{padding-top:clamp(36px,10vw,60px)}
   .word-context{grid-template-columns:1fr;gap:0;margin-top:22px}
   .owner{padding-bottom:22px;border-bottom:1px solid var(--yellow)}

@@ -94,6 +94,8 @@ async def about(request: Request):
 
 @app.get("/offer")
 async def offer(request: Request):
+    if not config.SHOW_OFFER:
+        raise HTTPException(404)
     return render(request, "offer.html")
 
 
@@ -128,7 +130,7 @@ async def api_state(vid: str = ""):
 async def api_create(request: Request, word: str = Form(...), url: str = Form(""), business: str = Form(""),
                      contact: str = Form(""), agree: bool = Form(False), logo: UploadFile | None = File(None)):
     if not agree:
-        raise HTTPException(400, "Нужно согласиться с правилами и офертой")
+        raise HTTPException(400, "Нужно согласиться с правилами")
     ip = request.headers.get("x-forwarded-for", request.client.host if request.client else "").split(",")[0].strip()
     name = None
     try:

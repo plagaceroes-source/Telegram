@@ -95,7 +95,7 @@
 
     <label class="check"><input type="checkbox" name="agree" required>
       <span>Согласен на публикацию указанных данных (имя и ссылка видны на сайте и в канале).</span></label>
-    <p class="muted sm">Отправляя заявку, ты принимаешь <a href="/offer" target="_blank">публичную оферту</a> и <a href="/rules" target="_blank">правила</a>. <a href="/privacy" target="_blank">Политика обработки данных</a>.</p>
+    <p class="muted sm">Отправляя заявку, ты принимаешь {% if cfg.SHOW_OFFER %}<a href="/offer" target="_blank">публичную оферту</a> и {% endif %}<a href="/rules" target="_blank">правила</a>. <a href="/privacy" target="_blank">Политика обработки данных</a>.</p>
 
     <div id="err" class="err" hidden></div>
     <button class="btn big" id="send">Отправить заявку</button>

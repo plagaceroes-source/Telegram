@@ -38,7 +38,7 @@
     </div>
     <div class="foot-col">
       <span class="foot-h">Документы</span>
-      <a href="/offer">Публичная оферта</a>
+      {% if cfg.SHOW_OFFER %}<a href="/offer">Публичная оферта</a>{% endif %}
       <a href="/privacy">Политика конфиденциальности</a>
     </div>
     {% if cfg.CHANNEL_URL or cfg.SUPPORT_USERNAME %}

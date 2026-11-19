@@ -41,3 +41,6 @@ OPERATOR_EMAIL = os.getenv("OPERATOR_EMAIL", "[email]")
 
 LOGO_DIR = os.getenv("LOGO_DIR") or str(Path(DB_PATH).resolve().parent / "logos")
 MAX_LOGO_BYTES = int(_f("MAX_LOGO_BYTES", 2 * 1024 * 1024))
+
+# Оферта скрыта до проверки юристом. Включить: SHOW_OFFER=1
+SHOW_OFFER = os.getenv("SHOW_OFFER", "0").strip().lower() in ("1", "true", "yes")

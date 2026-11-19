@@ -12,7 +12,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 
-from . import bot, config, images, service
+from . import bot, config, fmt, images, service
 
 BASE = Path(__file__).parent
 log = logging.getLogger("web")
@@ -64,7 +64,8 @@ def duration(sec: float) -> str:
 
 templates.env.filters["duration"] = duration
 templates.env.filters["date"] = lambda t: datetime.fromtimestamp(t, ZoneInfo("Europe/Madrid")).strftime("%d.%m.%Y %H:%M")
-templates.env.filters["price"] = lambda p: f"{p:g}"
+templates.env.filters["price"] = fmt.price
+templates.env.filters["date_ru"] = fmt.date_ru
 
 
 @app.get("/health")
@@ -84,7 +85,7 @@ async def rules(request: Request):
 
 @app.get("/history")
 async def history(request: Request):
-    return render(request, "history.html", items=service.history(), cur=service.current_word())
+    return render(request, "history.html", words=service.all_words())
 
 
 @app.get("/about")

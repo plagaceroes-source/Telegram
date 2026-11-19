@@ -1,25 +1,55 @@
 {% extends "base.html" %}
 {% from "_macros.html" import avatar %}
-{% block title %}История — Мы из Бланки{% endblock %}
+{% block title %}История слов — Мы из Бланки{% endblock %}
 {% block main %}
-<article class="narrow">
-  <h1>История слов</h1>
-  <p class="muted">Все, кто был на главной до тебя.</p>
-  <div class="hist">
-    {% if cur %}
-    <div class="row now">
-      <div class="hrow">{{ avatar(cur, true) }}<div class="w">{{ cur.text }}</div></div>
-      <div class="m">{% if cur.business %}{{ cur.business }} · {% endif %}{{ cur.price|price }} € · с {{ cur.started_at|date }}</div>
-      <span class="tag">сейчас</span>
-    </div>
-    {% endif %}
-    {% for w in items %}
-    <div class="row">
-      <div class="hrow">{{ avatar(w, true) }}<div class="w">{{ w.text }}</div></div>
-      <div class="m">{% if w.business %}{{ w.business }} · {% endif %}{{ w.price|price }} € · продержалось {{ (w.ended_at - w.started_at)|duration }} · {{ w.started_at|date }}</div>
-    </div>
-    {% endfor %}
-    {% if not cur and not items %}<p>История пока пустая. Будь первым в ней.</p>{% endif %}
+<article class="hist-page">
+  <a class="back" href="/">← На главную</a>
+  <h1 class="hist-title">История слов</h1>
+  <p class="hist-lead">Все, кто когда-либо занимал главную.</p>
+  <div class="hist-meta">
+    <span>{{ words|length }} — {{ 'покупка' if words|length % 10 == 1 and words|length % 100 != 11 else ('покупки' if words|length % 10 in (2,3,4) and words|length % 100 not in (12,13,14) else 'покупок') }}</span>
+    <span class="muted">Сначала новые · время Мадрид</span>
   </div>
+
+  <div class="hist-list">
+    {% for w in words %}
+    <section class="hcard">
+      <div class="h-num">{{ w.id }}</div>
+      <div class="h-main">
+        <div class="h-word"><span class="hw" title="{{ w.text }}">{{ w.text }}</span></div>
+        <div class="h-owner">
+          {{ avatar(w) }}
+          <div class="h-ot">
+            <strong>{{ w.business or 'Аноним' }}</strong>
+            {% if w.url %}<a class="url" href="{{ w.url }}" target="_blank" rel="nofollow noopener sponsored">{{ w.url|replace('https://','')|replace('http://','')|trim('/') }} ↗</a>
+            <small>Ссылка указана покупателем</small>
+            {% else %}<span class="url">Анонимная покупка</span>{% endif %}
+          </div>
+        </div>
+      </div>
+      <div class="h-side">
+        <div class="h-price">{{ w.price|price }}&nbsp;€</div>
+        <div class="h-date">{{ w.started_at|date_ru }}</div>
+        {% if not w.ended_at %}<span class="h-now">Сейчас на главной</span>{% endif %}
+      </div>
+    </section>
+    {% endfor %}
+    {% if not words %}<p class="muted">История пока пустая. Станешь первым в ней.</p>{% endif %}
+  </div>
+
+  <section class="hist-cta">
+    <h2>Хороший понт — дороже денег.</h2>
+    <p class="muted">Занимай главную: каждая замена вдвое дороже предыдущей.</p>
+    <a class="btn big" href="/?buy=1">Заменить слово за {{ st.next_price|price }}&nbsp;€</a>
+  </section>
 </article>
 {% endblock %}
+{% block scripts %}<script>
+// слово в карточке всегда в одну строку: подгоняем размер под ширину колонки
+function fitAll(){document.querySelectorAll(".hw").forEach(el=>{
+  el.style.fontSize="";const max=parseFloat(getComputedStyle(el).fontSize);let fs=max;
+  const w=el.parentElement.clientWidth;
+  if(el.scrollWidth>w){fs=Math.max(20,max*w/el.scrollWidth*0.98);el.style.fontSize=fs+"px"}
+})}
+addEventListener("resize",fitAll);document.fonts&&document.fonts.ready.then(fitAll);fitAll();
+</script>{% endblock %}

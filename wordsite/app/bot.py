@@ -12,7 +12,7 @@ from pathlib import Path
 
 from aiogram.types import BufferedInputFile, CallbackQuery, FSInputFile, InlineKeyboardButton, InlineKeyboardMarkup
 
-from . import config, cover, service
+from . import config, cover, fmt, service
 
 log = logging.getLogger("bot")
 bot: Bot | None = None
@@ -26,7 +26,7 @@ def _e(s):
 
 
 def card(o, note=""):
-    price = f"\nЦена слота: <b>{o['price']:g} €</b>" if o.get("price") else f"\nЦена сейчас: <b>{service.next_price():g} €</b>"
+    price = f"\nЦена слота: <b>{fmt.price(o['price'])} €</b>" if o.get("price") else f"\nЦена сейчас: <b>{fmt.price(service.next_price())} €</b>"
     return (
         f"🆕 <b>Заявка #{o['id']}</b>\n"
         f"Слово: <code>{_e(o['word'])}</code>\n"
@@ -86,7 +86,7 @@ async def notify_new(o):
 async def notify_claimed(o):
     await _send(
         f"💸 <b>Клиент нажал «Я оплатил»</b> — заявка #{o['id']}\n"
-        f"Способ: <b>{METHODS.get(o['method'], o['method'])}</b>, сумма <b>{o['price']:g} €</b>\n"
+        f"Способ: <b>{METHODS.get(o['method'], o['method'])}</b>, сумма <b>{fmt.price(o['price'])} €</b>\n"
         f"Слово: <code>{_e(o['word'])}</code> · {_e(o['contact'])}\n"
         f"Проверь поступление и подтверди.",
         kb([("💰 Оплата пришла", f"paid:{o['id']}"), ("🚫 Не пришла", f"nopay:{o['id']}")]))
@@ -104,8 +104,8 @@ def post_text(o):
     if o.get("url"):
         lines.append(f"Ссылка: {_e(o['url'])}")
     lines += [
-        f"Заплатили: <b>{o['price']:g} €</b>",
-        f"Чтобы перебить слово, нужно <b>{nxt:g} €</b>",
+        f"Заплатили: <b>{fmt.price(o['price'])} €</b>",
+        f"Чтобы перебить слово, нужно <b>{fmt.price(nxt)} €</b>",
         "",
         "Одно слово на всю Коста-Бланку. Пока кто-нибудь не заплатит больше 😎",
     ]
@@ -198,7 +198,7 @@ async def on_reset(m: Message):
     st = service.state()
     await m.reply(
         "⚠️ <b>Стереть всё?</b> Будут удалены все слова, история, заявки и логотипы. "
-        f"Сейчас в истории слов: {st['total_words']}. Цена вернётся к {config.START_PRICE:g} €. Отменить нельзя.",
+        f"Сейчас в истории слов: {st['total_words']}. Цена вернётся к {fmt.price(config.START_PRICE)} €. Отменить нельзя.",
         reply_markup=kb([("🗑 Да, стереть всё", "reset:yes"), ("Отмена", "reset:no")]))
 
 
@@ -208,7 +208,7 @@ async def on_reset_confirm(cb: CallbackQuery):
         return await cb.answer("Не здесь", show_alert=True)
     if cb.data == "reset:yes":
         w, o = service.reset_all()
-        await _done(cb, f"🗑 Готово: удалено слов {w}, заявок {o}. Сайт чистый, цена {config.START_PRICE:g} €. ({_e(cb.from_user.full_name)})")
+        await _done(cb, f"🗑 Готово: удалено слов {w}, заявок {o}. Сайт чистый, цена {fmt.price(config.START_PRICE)} €. ({_e(cb.from_user.full_name)})")
     else:
         await _done(cb, "Отменено, ничего не удалено.")
 

@@ -191,3 +191,15 @@ def test_backup_zip_contains_db_and_logos(tmp_path):
 ])
 def test_channel_id_normalized(raw, want):
     assert config._channel_id(raw) == want
+
+
+@pytest.mark.parametrize("p,want", [(1, "1"), (2, "2"), (999, "999"), (1024, "1 024"), (32768, "32 768"),
+                                    (1048576, "1 048 576"), (0.5, "0.5"), (2.25, "2.25")])
+def test_price_format(p, want):
+    from app import fmt
+    assert fmt.price(p) == want
+
+
+def test_date_ru():
+    from app import fmt
+    assert fmt.date_ru(0) == "1 января 1970 г. в 01:00"

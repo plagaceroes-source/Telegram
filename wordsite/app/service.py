@@ -9,7 +9,7 @@ import time
 import zipfile
 from math import ceil
 
-from . import config, images
+from . import config, fmt, images
 
 _lock = threading.RLock()
 _conn: sqlite3.Connection | None = None
@@ -119,6 +119,11 @@ def state():
         "total_sum": total["s"],
         "now": time.time(),
     }
+
+
+def all_words(limit=500):
+    """Вся история, новые сверху (текущее слово первым, у него ended_at = NULL)."""
+    return [dict(r) for r in _q("SELECT * FROM words ORDER BY id DESC LIMIT ?", (limit,))]
 
 
 def history(limit=200):
@@ -256,7 +261,7 @@ def sweep_expired():
 # ---------- оплата ----------
 def pay_info(price):
     return {
-        "eur": f"{price:g}",
+        "eur": fmt.price(price),
         "uah": ceil(price * config.UAH_RATE),
         "bizum_phone": config.BIZUM_PHONE,
         "crypto_address": config.CRYPTO_ADDRESS,

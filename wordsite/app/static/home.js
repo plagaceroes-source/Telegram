@@ -21,7 +21,7 @@ function drawLock(){
 }
 setInterval(drawLock,1000);
 window.onState=function(s){
-  const p=+s.next_price.toFixed(2);
+  const p=fmtP(s.next_price);
   $("price").textContent=p;$("price2").textContent=p;if($("price3"))$("price3").textContent=p;$("tw").textContent=s.total_words;
   lockLeft=s.locked?s.lock_left:null;lockAt=Date.now();drawLock();
   if(s.word&&s.word.text.toUpperCase()!==startText.toUpperCase())location.reload();

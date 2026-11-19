@@ -4,7 +4,7 @@ from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont, ImageOps
 
-from . import config
+from . import config, fmt
 
 BASE = Path(__file__).parent
 FONT = BASE / "static" / "fonts" / "InterVariable.ttf"
@@ -111,8 +111,8 @@ def make_cover(word, price, next_price, business="", url="", logo_path=None) -> 
         d.text((tx, base_y + 4 * S), _ellipsize(short + " ↗", f_url, max_text), font=f_url, fill=MUTED)
 
     f_big, f_small = font(46, 800), font(24, 500)
-    pr = f"{price:g} €"
-    nx = f"заменить: {next_price:g} €"
+    pr = f"{fmt.price(price)} €"
+    nx = f"заменить: {fmt.price(next_price)} €"
     bw = max(f_big.getlength(pr), f_small.getlength(nx)) + 56 * S
     bx1, bx0 = W * S - m, W * S - m - bw
     d.rounded_rectangle((bx0, base_y - 62 * S, bx1, base_y + 62 * S), radius=30 * S, outline=YELLOW, width=2 * S)
@@ -156,7 +156,7 @@ def make_announce_cover(site="somosdeblanca.info", price=1, word="ТВОЁСЛО
     d.text((m, base_y - 44 * S), f"{site} ↗", font=f_site, fill=INK)
     d.text((m, base_y + 8 * S), "Одно слово на всю Коста-Бланку", font=f_sub, fill=MUTED)
     f_big, f_small = font(46, 800), font(24, 500)
-    pr, nx = f"от {price:g} €", "каждая замена ×2"
+    pr, nx = f"от {fmt.price(price)} €", "каждая замена ×2"
     bw = max(f_big.getlength(pr), f_small.getlength(nx)) + 56 * S
     bx1, bx0 = W * S - m, W * S - m - bw
     d.rounded_rectangle((bx0, base_y - 62 * S, bx1, base_y + 62 * S), radius=30 * S, outline=YELLOW, width=2 * S)

@@ -59,6 +59,7 @@
   <div class="foot-bottom"><div class="foot-brand"><b>МЫ ИЗ БЛАНКИ®</b> <span class="yr">{{ year }}</span></div><span>Чайка одобряет, но ответственности не несёт.</span></div>
 </footer>
 <script src="/static/app.js"></script>
+{% if cfg.CF_BEACON_TOKEN %}<!-- Cloudflare Web Analytics --><script type='module' src='https://static.cloudflareinsights.com/beacon.min.js' data-cf-beacon='{"token": "{{ cfg.CF_BEACON_TOKEN }}"}'></script><!-- End Cloudflare Web Analytics -->{% endif %}
 {% block scripts %}{% endblock %}
 </body>
 </html>

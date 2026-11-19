@@ -59,3 +59,6 @@ MAX_LOGO_BYTES = int(_f("MAX_LOGO_BYTES", 2 * 1024 * 1024))
 
 # Оферта скрыта до проверки юристом. Включить: SHOW_OFFER=1
 SHOW_OFFER = os.getenv("SHOW_OFFER", "0").strip().lower() in ("1", "true", "yes")
+
+# Cloudflare Web Analytics (без cookies). Пустое значение отключает скрипт.
+CF_BEACON_TOKEN = os.getenv("CF_BEACON_TOKEN", "85f0bae26f2240ca867cc61b484f217e").strip()

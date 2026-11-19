@@ -1,4 +1,5 @@
 """Telegram-бот: модерация заявок в группе + пост в канал."""
+import asyncio
 import html
 import logging
 
@@ -9,9 +10,9 @@ from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from pathlib import Path
 
-from aiogram.types import CallbackQuery, FSInputFile, InlineKeyboardButton, InlineKeyboardMarkup
+from aiogram.types import BufferedInputFile, CallbackQuery, FSInputFile, InlineKeyboardButton, InlineKeyboardMarkup
 
-from . import config, service
+from . import config, cover, service
 
 log = logging.getLogger("bot")
 bot: Bot | None = None
@@ -95,21 +96,68 @@ async def notify_expired(o):
     await _send(f"⌛ Заявка #{o['id']} ({_e(o['word'])}): время на оплату вышло, очередь сброшена.")
 
 
+def post_text(o):
+    """Текст поста в канал."""
+    nxt = service.next_price()
+    who = _e(o["business"]) if o.get("business") else "Аноним"
+    lines = [f"🔄 <b>На главной новое слово: {_e(o['word']).upper()}</b>", "", f"Купил: {who}"]
+    if o.get("url"):
+        lines.append(f"Ссылка: {_e(o['url'])}")
+    lines += [
+        f"Заплатили: <b>{o['price']:g} €</b>",
+        f"Чтобы перебить слово, нужно <b>{nxt:g} €</b>",
+        "",
+        "Одно слово на всю Коста-Бланку. Пока кто-нибудь не заплатит больше 😎",
+    ]
+    return "\n".join(lines)
+
+
+async def post_cover(o) -> bytes:
+    path = Path(config.LOGO_DIR) / o["logo"] if o.get("logo") else None
+    return await asyncio.to_thread(
+        cover.make_cover, o["word"], o["price"], service.next_price(),
+        o.get("business") or "", o.get("url") or "", path)
+
+
+def post_keyboard():
+    return InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(
+        text="⚡ Заменить слово", url=config.SITE_URL)]])
+
+
+async def send_post(chat_id, o):
+    """Обложка + текст + кнопка. Если картинку не нарисовать, уходит просто текст."""
+    text, kb_ = post_text(o), post_keyboard()
+    try:
+        png = await post_cover(o)
+        return await bot.send_photo(chat_id, BufferedInputFile(png, "word.png"), caption=text, reply_markup=kb_)
+    except Exception:
+        log.exception("cover failed, sending text only")
+        return await bot.send_message(chat_id, text, reply_markup=kb_, disable_web_page_preview=True)
+
+
 async def announce(o):
     """Пост в канал при смене слова."""
     if not (bot and config.CHANNEL_ID):
         return
-    nxt = service.next_price()
-    text = (
-        f"🔄 На сайте новое слово: <b>{_e(o['word'])}</b>\n"
-        + (f"Купил: {_e(o['business'])}\n" if o.get("business") else "")
-        + f"Заплатил: {o['price']:g} €. Чтобы заменить, надо {nxt:g} €.\n"
-        f"{config.SITE_URL}"
-    )
     try:
-        await bot.send_message(config.CHANNEL_ID, text, disable_web_page_preview=True)
+        await send_post(config.CHANNEL_ID, o)
     except Exception:
         log.exception("channel post failed")
+
+
+@dp.message(Command("cover"))
+async def on_cover(m: Message):
+    """Предпросмотр поста: присылает в группу модерации, в канал ничего не уходит."""
+    if m.chat.id != config.MOD_CHAT_ID:
+        return
+    w = service.current_word()
+    if w:
+        o = {"word": w["text"], "price": w["price"], "business": w["business"], "url": w["url"], "logo": w["logo"]}
+    else:
+        o = {"word": "Привет", "price": config.START_PRICE, "business": "Пример", "url": "example.com", "logo": None}
+    await m.reply("👀 Так будет выглядеть пост в канале (это только предпросмотр):")
+    await send_post(m.chat.id, o)
+
 
 
 @dp.message(Command("id"))

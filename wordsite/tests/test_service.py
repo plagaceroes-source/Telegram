@@ -147,3 +147,10 @@ def test_reset_all(tmp_path):
     assert service.current_word() is None and service.next_price() == config.START_PRICE
     assert not (tmp_path / "logos" / name).exists()
     assert service.create_order("В", "", "", "")["id"] == 1
+
+
+def test_cover_renders_png():
+    from app import cover
+    for word, biz in [("Привет", "Лимпиеза"), ("ОченьДлинноеСловоДляПроверкиВместимости", ""), ("A", "x" * 200)]:
+        png = cover.make_cover(word, 2, 4, biz, "https://example.com/" + "a" * 100, None)
+        assert png[:8] == b"\x89PNG\r\n\x1a\n" and len(png) > 5000

@@ -4,7 +4,6 @@
 {% set w = st.word %}
 <section class="hero">
   <svg class="crown" viewBox="0 0 130 100" fill="none" stroke="currentColor" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 78 20 22 46 56 66 8 90 56 116 26 112 80 8 78z"/></svg>
-  <svg class="rays" viewBox="0 0 60 50" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round"><path d="M4 4 8 38M24 6l14 28M36 30l20 10"/></svg>
   {% if w and w.url %}
     <a id="word" class="hero-word" href="{{ w.url }}" target="_blank" rel="nofollow noopener sponsored">{{ w.text }}</a>
   {% else %}

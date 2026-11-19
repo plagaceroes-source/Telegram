@@ -98,7 +98,6 @@ code{background:var(--bg2);padding:2px 6px;border-radius:6px;user-select:all;col
 .hero-word{font-size:23vw;line-height:.86;letter-spacing:-.055em;font-weight:900;white-space:nowrap;width:100%;padding:0 0 .03em;margin:0;text-transform:uppercase;color:var(--ink);text-decoration:none;display:block;font-family:Inter,Arial,sans-serif}
 .hero-word.flash{animation:flash .8s}
 .crown{position:absolute;width:11.5%;height:auto;color:var(--yellow);top:12px;left:1.4%;z-index:1;transform:rotate(-3deg);pointer-events:none}
-.rays{position:absolute;width:5.3%;right:0;top:25px;color:var(--ink);pointer-events:none}
 .word-context{display:grid;grid-template-columns:1.1fr 1.25fr .82fr;gap:clamp(22px,2.5vw,42px);align-items:center;margin-top:clamp(20px,2.4vw,40px)}
 .owner{display:flex;align-items:center;gap:clamp(14px,1.8vw,30px);min-width:0}
 .avatar{flex-shrink:0;width:clamp(64px,7vw,118px);aspect-ratio:1;border-radius:50%;background:transparent;border:1px solid var(--yellow);display:grid;place-items:center;font-weight:900;font-size:clamp(26px,3vw,50px);letter-spacing:-.07em;text-transform:uppercase;overflow:hidden}
@@ -170,8 +169,7 @@ footer div:first-child{display:flex;gap:18px;flex-wrap:wrap}
   .pill-price{margin-left:auto;font-size:clamp(16px,4.4vw,21px)}
   .flow-arrow{display:none}
   .status-current{width:14px;height:14px;padding:0;font-size:0;background:var(--yellow);border-color:var(--yellow);flex-shrink:0}
-  .crown{width:17%;top:clamp(14px,4vw,28px)}.rays{width:9%;top:clamp(34px,9vw,60px)}
-  footer{flex-direction:column;gap:14px;margin-top:40px}
+  .crown{width:17%;top:clamp(14px,4vw,28px)}  footer{flex-direction:column;gap:14px;margin-top:40px}
   footer div:first-child{display:grid;grid-template-columns:1fr 1fr;gap:12px 24px;font-size:14px}
 }
 

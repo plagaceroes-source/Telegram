@@ -223,3 +223,5 @@ dialog .link{margin:0;text-align:left;font-size:13px;width:fit-content}
   .foot-col a{font-size:15px}
   .foot-bottom{flex-direction:column;gap:6px}
 }
+.foot-brand{display:flex;align-items:baseline;gap:10px}
+.foot-brand .yr{color:var(--muted);font-weight:500}

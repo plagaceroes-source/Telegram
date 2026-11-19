@@ -46,7 +46,7 @@ templates = Jinja2Templates(directory=BASE / "templates")
 
 
 def render(request: Request, name: str, **ctx):
-    ctx.update(cfg=config, st=service.state(), page=name.removesuffix(".html"))
+    ctx.update(cfg=config, st=service.state(), page=name.removesuffix(".html"), year=datetime.now().year)
     return templates.TemplateResponse(request, name, ctx)
 
 

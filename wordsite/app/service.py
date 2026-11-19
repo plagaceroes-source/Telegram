@@ -285,3 +285,18 @@ def drop_logo(oid):
         _conn.commit()
         images.delete_logo(o["logo"])
         return get_order(oid)
+
+
+def reset_all():
+    """Полная очистка перед запуском: слова, заявки, файлы логотипов. Возвращает (слов, заявок)."""
+    with _lock:
+        n_words = _one("SELECT COUNT(*) c FROM words")["c"]
+        n_orders = _one("SELECT COUNT(*) c FROM orders")["c"]
+        logos = [r["logo"] for r in _q("SELECT logo FROM orders WHERE logo IS NOT NULL UNION SELECT logo FROM words WHERE logo IS NOT NULL")]
+        _conn.execute("DELETE FROM words")
+        _conn.execute("DELETE FROM orders")
+        _conn.execute("DELETE FROM sqlite_sequence WHERE name IN ('words','orders')")
+        _conn.commit()
+        for name in logos:
+            images.delete_logo(name)
+        return n_words, n_orders

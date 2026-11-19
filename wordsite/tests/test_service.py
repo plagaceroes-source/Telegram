@@ -134,3 +134,16 @@ def test_logo_rejects_gif_and_huge(tmp_path):
     with pytest.raises(images.LogoError):
         images.save_logo(_png())
     config.MAX_LOGO_BYTES = 2 * 1024 * 1024
+
+
+def test_reset_all(tmp_path):
+    from app import images
+    config.LOGO_DIR = str(tmp_path / "logos")
+    name = images.save_logo(_png())
+    o = service.approve(service.create_order("А", "", "", "", "", name)["id"])
+    service.confirm_payment(o["id"])
+    service.create_order("Б", "", "", "")
+    assert service.reset_all() == (1, 2)
+    assert service.current_word() is None and service.next_price() == config.START_PRICE
+    assert not (tmp_path / "logos" / name).exists()
+    assert service.create_order("В", "", "", "")["id"] == 1

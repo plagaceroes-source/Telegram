@@ -118,6 +118,29 @@ async def on_id(m: Message):
     await m.reply(f"id этого чата: <code>{m.chat.id}</code>")
 
 
+@dp.message(Command("reset"))
+async def on_reset(m: Message):
+    """Очистка перед запуском: только в группе модерации и с подтверждением."""
+    if m.chat.id != config.MOD_CHAT_ID:
+        return
+    st = service.state()
+    await m.reply(
+        "⚠️ <b>Стереть всё?</b> Будут удалены все слова, история, заявки и логотипы. "
+        f"Сейчас в истории слов: {st['total_words']}. Цена вернётся к {config.START_PRICE:g} €. Отменить нельзя.",
+        reply_markup=kb([("🗑 Да, стереть всё", "reset:yes"), ("Отмена", "reset:no")]))
+
+
+@dp.callback_query(F.data.startswith("reset:"))
+async def on_reset_confirm(cb: CallbackQuery):
+    if not _allowed(cb):
+        return await cb.answer("Не здесь", show_alert=True)
+    if cb.data == "reset:yes":
+        w, o = service.reset_all()
+        await _done(cb, f"🗑 Готово: удалено слов {w}, заявок {o}. Сайт чистый, цена {config.START_PRICE:g} €. ({_e(cb.from_user.full_name)})")
+    else:
+        await _done(cb, "Отменено, ничего не удалено.")
+
+
 def _allowed(cb: CallbackQuery) -> bool:
     return bool(cb.message) and cb.message.chat.id == config.MOD_CHAT_ID
 

@@ -98,7 +98,7 @@ async def notify_expired(o):
 
 def post_text(o):
     """Текст поста в канал."""
-    nxt = service.next_price()
+    nxt = o["price"] * 2  # правило: каждая замена вдвое дороже
     who = _e(o["business"]) if o.get("business") else "Аноним"
     lines = [f"<b>На главной новое слово: {_e(o['word']).upper()}</b>", "", f"Купил: {who}"]
     if o.get("url"):
@@ -115,7 +115,7 @@ def post_text(o):
 async def post_cover(o) -> bytes:
     path = Path(config.LOGO_DIR) / o["logo"] if o.get("logo") else None
     return await asyncio.to_thread(
-        cover.make_cover, o["word"], o["price"], service.next_price(),
+        cover.make_cover, o["word"], o["price"], o["price"] * 2,
         o.get("business") or "", o.get("url") or "", path)
 
 

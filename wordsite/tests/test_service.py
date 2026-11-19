@@ -154,3 +154,11 @@ def test_cover_renders_png():
     for word, biz in [("Привет", "Лимпиеза"), ("ОченьДлинноеСловоДляПроверкиВместимости", ""), ("A", "x" * 200)]:
         png = cover.make_cover(word, 2, 4, biz, "https://example.com/" + "a" * 100, None)
         assert png[:8] == b"\x89PNG\r\n\x1a\n" and len(png) > 5000
+
+
+def test_post_text_next_price_is_double():
+    from app import bot
+    t = bot.post_text({"word": "Привет", "price": 2, "business": "", "url": None})
+    assert "Заплатили: <b>2 €</b>" in t and "<b>4 €</b>" in t
+    t = bot.post_text({"word": "Привет", "price": 1, "business": "", "url": None})
+    assert "<b>2 €</b>" in t

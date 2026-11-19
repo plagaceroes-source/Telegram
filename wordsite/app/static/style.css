@@ -206,6 +206,7 @@ dialog .link{margin:0;text-align:left;font-size:13px;width:fit-content}
 .st-sub{font-size:clamp(15px,4.2vw,19px);letter-spacing:-.02em;color:var(--ink);margin:0 0 14px;white-space:nowrap}
 .st-sub.wrap{white-space:normal;color:var(--muted)}
 .st-title.bad{color:#c0392b}
+.st-title.ok{color:#14853f}
 
 /* ---------- футер ---------- */
 .site-footer{margin:64px var(--gutter) 0;border-top:1px solid var(--yellow);padding:34px 0 30px;display:flex;flex-direction:column;gap:30px;font-size:14px}

@@ -3,9 +3,9 @@ const token=$("order").dataset.token;
 let left=null,at=0,last=null;
 const MSG={
   pending:["Заявка на модерации","Не закрывай страницу: после одобрения здесь появятся реквизиты и таймер.","wrap"],
-  approved:["Заявка одобрена!","Оплатите и нажмите «Я оплатил»",""],
+  approved:["Заявка одобрена!","Оплатите и нажмите «Я оплатил»","ok"],
   claimed:["Ждём подтверждения","Модератор проверяет оплату. Таймер остановлен.","wrap"],
-  live:["Готово!","Слово уже на главной.",""],
+  live:["Готово!","Слово уже на главной.","ok"],
   rejected:["Заявка отклонена","Загляни в правила и подай новую.","bad"],
   expired:["Время вышло","Очередь слетела. Подай заявку заново.","bad"],
   cancelled:["Заявка отменена","","bad"]
@@ -26,7 +26,7 @@ async function load(){
     $("oword").textContent=o.word;
     const m=MSG[o.status]||["","",""];
     const t=$("st-title"),sub=$("st-sub");
-    t.textContent=m[0];t.className="st-title"+(m[2]==="bad"?" bad":"");
+    t.textContent=m[0];t.className="st-title"+(m[2]==="bad"?" bad":m[2]==="ok"?" ok":"");
     sub.textContent=m[1];sub.className="st-sub"+(m[2]==="wrap"||m[2]==="bad"?" wrap":"");
     $("pay").hidden=o.status!=="approved";
     if(o.pay){

@@ -203,3 +203,25 @@ def test_price_format(p, want):
 def test_date_ru():
     from app import fmt
     assert fmt.date_ru(0) == "1 января 1970 г. в 01:00"
+
+
+def test_stats_counts_funnel_and_visitors():
+    a = service.approve(service.create_order("А", "", "", "")["id"])
+    service.confirm_payment(a["id"])                       # оплачено 1 €
+    b = service.approve(service.create_order("Б", "", "", "")["id"])
+    service.confirm_payment(b["id"])                       # оплачено 2 €
+    c = service.create_order("В", "", "", "")
+    service.reject(c["id"])
+    d = service.approve(service.create_order("Г", "", "", "")["id"])
+    service._conn.execute("UPDATE orders SET expires_at=? WHERE id=?", (time.time() - 1, d["id"]))
+    service._conn.commit()
+    service.sweep_expired()
+    service.ping("v1"); service.ping("v1"); service.ping("v2")
+    st = service.stats()
+    t = st["all"]
+    assert (t["created"], t["approved"], t["paid"], t["rejected"], t["expired"]) == (4, 3, 2, 1, 1)
+    assert t["revenue"] == 3 and t["visitors"] == 2 and st["today"]["created"] == 4
+    assert st["words"]["total"] == 2 and st["words"]["next_price"] == 4
+    from app import bot
+    txt = bot.stats_text(st)
+    assert "Выручка: <b>3 €</b>" in txt and "Посетителей: 2" in txt

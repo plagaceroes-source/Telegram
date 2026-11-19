@@ -29,6 +29,7 @@ CREATE TABLE IF NOT EXISTS orders(
   approved_at REAL, expires_at REAL, claimed_at REAL, paid_at REAL
 );
 CREATE INDEX IF NOT EXISTS orders_status ON orders(status);
+CREATE TABLE IF NOT EXISTS visitors(day TEXT NOT NULL, vid TEXT NOT NULL, PRIMARY KEY(day, vid));
 """
 # status: pending -> approved -> claimed -> live (потом replaced)
 #         pending -> rejected | approved -> expired | cancelled
@@ -272,12 +273,28 @@ def pay_info(price):
 
 # ---------- онлайн ----------
 _online: dict[str, float] = {}
+_seen_today: set[tuple[str, str]] = set()
+TZ = "Europe/Madrid"
+
+
+def _day(ts=None) -> str:
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+    return datetime.fromtimestamp(ts or time.time(), ZoneInfo(TZ)).strftime("%Y-%m-%d")
 
 
 def ping(vid: str) -> int:
     now = time.time()
     if vid and len(vid) <= 64:
         _online[vid] = now
+        key = (_day(now), vid)
+        if key not in _seen_today and _conn is not None:  # анонимный случайный id, без личных данных
+            if len(_seen_today) > 50000:
+                _seen_today.clear()
+            _seen_today.add(key)
+            with _lock:
+                _conn.execute("INSERT OR IGNORE INTO visitors(day, vid) VALUES(?, ?)", key)
+                _conn.commit()
     for k in [k for k, t in _online.items() if now - t > 45]:
         del _online[k]
     return max(1, len(_online))
@@ -303,6 +320,8 @@ def reset_all():
         logos = [r["logo"] for r in _q("SELECT logo FROM orders WHERE logo IS NOT NULL UNION SELECT logo FROM words WHERE logo IS NOT NULL")]
         _conn.execute("DELETE FROM words")
         _conn.execute("DELETE FROM orders")
+        _conn.execute("DELETE FROM visitors")  # статистика начинается с чистого листа
+        _seen_today.clear()
         _conn.execute("DELETE FROM sqlite_sequence WHERE name IN ('words','orders')")
         _conn.commit()
         for name in logos:
@@ -326,3 +345,32 @@ def make_backup(with_logos=True) -> bytes:
                 for f in sorted(logos.glob("*.png")):
                     z.write(f, f"logos/{f.name}")
         return buf.getvalue()
+
+
+def stats(now=None) -> dict:
+    """Сводка для /stats: заявки, воронка, выручка, посетители за сегодня / 7 дней / всё время."""
+    from datetime import datetime, timedelta
+    from zoneinfo import ZoneInfo
+    now = now or time.time()
+    today0 = datetime.fromtimestamp(now, ZoneInfo(TZ)).replace(hour=0, minute=0, second=0, microsecond=0)
+    periods = {"today": today0.timestamp(), "week": now - 7 * 86400, "all": 0}
+    days = {"today": _day(now), "week": _day(now - 6 * 86400), "all": "0000-00-00"}
+    out = {}
+    with _lock:
+        _conn.execute("DELETE FROM visitors WHERE day < ?", (_day(now - 400 * 86400),))
+        for k, since in periods.items():
+            r = _one(
+                "SELECT COUNT(*) created,"
+                " COALESCE(SUM(approved_at IS NOT NULL),0) approved,"
+                " COALESCE(SUM(paid_at IS NOT NULL),0) paid,"
+                " COALESCE(SUM(status='rejected'),0) rejected,"
+                " COALESCE(SUM(status='expired'),0) expired,"
+                " COALESCE(SUM(CASE WHEN paid_at IS NOT NULL THEN price END),0) revenue"
+                " FROM orders WHERE created_at >= ?", (since,))
+            r["visitors"] = _one("SELECT COUNT(DISTINCT vid) c FROM visitors WHERE day >= ?", (days[k],))["c"]
+            out[k] = r
+        w = _one("SELECT COUNT(*) n, COALESCE(AVG(ended_at - started_at),0) avg_s, COALESCE(MAX(ended_at - started_at),0) max_s FROM words WHERE ended_at IS NOT NULL")
+        top = _one("SELECT text, price FROM words ORDER BY price DESC LIMIT 1")
+    out["words"] = {"avg_seconds": w["avg_s"], "max_seconds": w["max_s"], "top": top, "total": state()["total_words"],
+                    "next_price": next_price()}
+    return out

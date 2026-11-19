@@ -151,6 +151,45 @@ async def announce(o):
                     f"Ошибка: <code>{_e(str(e)[:200])}</code>")
 
 
+def _dur(sec) -> str:
+    sec = int(sec)
+    d, r = divmod(sec, 86400)
+    h, r = divmod(r, 3600)
+    m = r // 60
+    if d:
+        return f"{d} д {h} ч"
+    if h:
+        return f"{h} ч {m} мин"
+    return f"{m} мин"
+
+
+def stats_text(st) -> str:
+    def block(title, r):
+        conv = f" ({round(r['paid'] / r['approved'] * 100)}% от одобренных)" if r["approved"] else ""
+        return (f"<b>{title}</b>\n"
+                f"Посетителей: {r['visitors']}\n"
+                f"Заявок: {r['created']} → одобрено {r['approved']} → оплачено {r['paid']}{conv}\n"
+                f"Отклонено: {r['rejected']}, не оплатили вовремя: {r['expired']}\n"
+                f"Выручка: <b>{fmt.price(r['revenue'])} €</b>")
+    w = st["words"]
+    top = f"Рекорд: «{_e(w['top']['text'])}» за {fmt.price(w['top']['price'])} €\n" if w["top"] else ""
+    tail = (f"<b>Слова</b>\nВсего куплено: {w['total']}\n{top}"
+            f"Следующая цена: {fmt.price(w['next_price'])} €")
+    if w["avg_seconds"]:
+        tail += f"\nВ среднем слово держится: {_dur(w['avg_seconds'])}, дольше всех: {_dur(w['max_seconds'])}"
+    return "📊 <b>Статистика</b>\n\n" + "\n\n".join([block("Сегодня", st["today"]), block("7 дней", st["week"]),
+                                                  block("Всё время", st["all"]), tail])
+
+
+@dp.message(Command("stats"))
+async def on_stats(m: Message):
+    """Сводка по заявкам, оплатам и посетителям: только в группе модерации."""
+    if m.chat.id != config.MOD_CHAT_ID:
+        return
+    st = await asyncio.to_thread(service.stats)
+    await m.reply(stats_text(st))
+
+
 @dp.message(Command("backup"))
 async def on_backup(m: Message):
     """Копия данных: присылает zip с базой и логотипами в группу модерации."""

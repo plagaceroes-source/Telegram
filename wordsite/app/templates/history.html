@@ -47,9 +47,16 @@
 {% block scripts %}<script>
 // слово в карточке всегда в одну строку: подгоняем размер под ширину колонки
 function fitAll(){document.querySelectorAll(".hw").forEach(el=>{
-  el.style.fontSize="";const max=parseFloat(getComputedStyle(el).fontSize);let fs=max;
-  const w=el.parentElement.clientWidth;
-  if(el.scrollWidth>w){fs=Math.max(20,max*w/el.scrollWidth*0.98);el.style.fontSize=fs+"px"}
+  el.classList.remove("two");el.style.fontSize="";
+  const max=parseFloat(getComputedStyle(el).fontSize),w=el.parentElement.clientWidth;
+  if(el.scrollWidth<=w)return;
+  const fs=max*w/el.scrollWidth*0.98;
+  if(fs>=26){el.style.fontSize=fs+"px";return}
+  // очень длинное слово: две строки в той же по высоте ячейке, текст виден целиком
+  el.classList.add("two");
+  const box=el.parentElement;let f=Math.floor(box.clientHeight/2.15);
+  el.style.fontSize=f+"px";
+  while(el.scrollHeight>box.clientHeight+1&&f>12){f-=1;el.style.fontSize=f+"px"}
 })}
 addEventListener("resize",fitAll);document.fonts&&document.fonts.ready.then(fitAll);fitAll();
 </script>{% endblock %}

@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block title %}История — Мы из Бланки{% endblock %}
+{% block main %}
+<article class="narrow">
+  <h1>История слов</h1>
+  <p class="muted">Все, кто был на главной до тебя.</p>
+  <div class="hist">
+    {% if cur %}
+    <div class="row now">
+      <div class="w">{{ cur.text }}</div>
+      <div class="m">{% if cur.business %}{{ cur.business }} · {% endif %}{{ cur.price|price }} € · с {{ cur.started_at|date }}</div>
+      <span class="tag">сейчас</span>
+    </div>
+    {% endif %}
+    {% for w in items %}
+    <div class="row">
+      <div class="w">{{ w.text }}</div>
+      <div class="m">{% if w.business %}{{ w.business }} · {% endif %}{{ w.price|price }} € · продержалось {{ (w.ended_at - w.started_at)|duration }} · {{ w.started_at|date }}</div>
+    </div>
+    {% endfor %}
+    {% if not cur and not items %}<p>История пока пустая. Будь первым в ней.</p>{% endif %}
+  </div>
+</article>
+{% endblock %}

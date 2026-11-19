@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block title %}О проекте — Мы из Бланки{% endblock %}
+{% block main %}
+<article class="narrow prose">
+  <div class="about-head">
+    <img src="/static/img/mascot.jpg" alt="Чайка-маскот">
+    <div><h1>О проекте</h1><p class="muted">Коста-Бланка. Загар, вайб и немножко рекламы.</p></div>
+  </div>
+  <p>«Мы из Бланки» — канал про жизнь на Коста-Бланке. Это сайт-спутник канала: на главной одно слово, и оно принадлежит тому, кто заплатил больше всех. Хочешь, чтобы тебя заметили, перебей ставку.</p>
+  <p>Для местных бизнесов это дёшево, смешно и работает: слово видят подписчики канала и все, кто заходит на сайт. Каждая смена слова публикуется в канале.</p>
+  <h2>Контакты</h2>
+  <ul>
+    <li>Telegram-канал: <a href="{{ cfg.CHANNEL_URL }}" target="_blank" rel="noopener">{{ cfg.CHANNEL_URL }}</a></li>
+    {% if cfg.SUPPORT_USERNAME %}<li>Поддержка и реклама: <a href="https://t.me/{{ cfg.SUPPORT_USERNAME }}" target="_blank" rel="noopener">@{{ cfg.SUPPORT_USERNAME }}</a></li>{% endif %}
+    <li>Почта: {{ cfg.OPERATOR_EMAIL }}</li>
+  </ul>
+</article>
+{% endblock %}

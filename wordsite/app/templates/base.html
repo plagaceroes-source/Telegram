@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{% block title %}Мы из Бланки — слово на продажу{% endblock %}</title>
+<meta name="description" content="Одно слово на главной. Хочешь своё — перебей ставку. Реклама для местных бизнесов Коста-Бланки.">
+<meta property="og:title" content="Мы из Бланки — слово на продажу">
+<meta property="og:description" content="Одно слово. Одна ссылка. Каждая покупка в два раза дороже предыдущей.">
+<meta property="og:image" content="{{ cfg.SITE_URL }}/static/img/og.jpg">
+<link rel="icon" href="/static/img/mascot.jpg">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@600;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<header class="top">
+  <a class="brand" href="/"><img src="/static/img/mascot.jpg" alt=""><span>Мы из Бланки</span></a>
+  <nav>
+    <a href="/rules" {% if page=='rules' %}class="on"{% endif %}>Правила</a>
+    <a href="/history" {% if page=='history' %}class="on"{% endif %}>История</a>
+    <a href="/about" {% if page=='about' %}class="on"{% endif %}>О проекте</a>
+  </nav>
+  <div class="online" title="Сейчас на сайте"><i></i><b id="online">1</b> онлайн</div>
+</header>
+<main>{% block main %}{% endblock %}</main>
+<footer>
+  <div>
+    <a href="{{ cfg.CHANNEL_URL }}" target="_blank" rel="noopener">Telegram-канал</a> ·
+    <a href="/offer">Оферта</a> · <a href="/privacy">Политика</a> · <a href="/about">Контакты</a>
+  </div>
+  <div class="muted">© Мы из Бланки. Чайка одобряет, но ответственности не несёт.</div>
+</footer>
+<script src="/static/app.js"></script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

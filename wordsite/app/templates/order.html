@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}Заявка — Мы из Бланки{% endblock %}
+{% block main %}
+<section class="narrow" id="order" data-token="{{ token }}">
+  <h1>Твоя заявка</h1>
+  <div class="word-wrap small"><span id="oword" class="word"></span></div>
+  <div id="ostatus" class="status"></div>
+  <div id="timer" class="timer" hidden></div>
+
+  <div id="pay" hidden>
+    <p>К оплате: <b id="p-eur"></b> €</p>
+    <div class="methods">
+      <label class="method"><input type="radio" name="m" value="bizum" checked>
+        <div><b>Bizum</b><span>на номер <code id="p-bizum"></code></span></div></label>
+      <label class="method"><input type="radio" name="m" value="mono">
+        <div><b>Карта Монобанка</b><span><code id="p-mono"></code> · <span id="p-uah"></span> ₴</span></div></label>
+      <label class="method"><input type="radio" name="m" value="crypto">
+        <div><b>Крипта</b><span><span id="p-net"></span>, эквивалент в €:<br><code id="p-addr"></code></span></div></label>
+    </div>
+    <button class="btn big" id="claim">Я оплатил</button>
+    <button class="link" id="cancel">Отменить заявку</button>
+  </div>
+  <p><a href="/">← на главную</a></p>
+</section>
+{% endblock %}
+{% block scripts %}<script src="/static/order.js"></script>{% endblock %}

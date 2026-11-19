@@ -10,3 +10,6 @@ storage/incoming/*
 *.db
 *.sqlite3
 .DS_Store
+
+wordsite/.env
+wordsite/.venv/

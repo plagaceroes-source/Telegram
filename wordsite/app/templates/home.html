@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% block main %}
+<section class="hero">
+  <img class="hero-mascot" src="/static/img/mascot.jpg" alt="Чайка"><br>
+  <div class="hero-label">Сейчас на сайте</div>
+  <div class="word-wrap">
+    {% if st.word %}
+      <a id="word" class="word" {% if st.word.url %}href="{{ st.word.url }}" target="_blank" rel="nofollow noopener sponsored"{% endif %}>{{ st.word.text }}</a>
+    {% else %}
+      <span id="word" class="word">ТВОЁСЛОВО</span>
+    {% endif %}
+  </div>
+  <div id="by" class="by">
+    {% if st.word %}{% if st.word.business %}Купил: {{ st.word.business }} · {% endif %}заплатил {{ st.word.price|price }} €{% else %}Здесь пока пусто. Занимай первым.{% endif %}
+  </div>
+
+  <div class="buy">
+    <div class="price-box">
+      <span class="muted">Чтобы заменить слово</span>
+      <strong><span id="price">{{ st.next_price|price }}</span> €</strong>
+    </div>
+    <button id="open" class="btn big">Заменить слово</button>
+  </div>
+  <div id="lock" class="lock" hidden></div>
+  <p class="hint">Каждая покупка в 2 раза дороже предыдущей. Перебили ставку — слово сразу сменилось.</p>
+</section>
+
+<section class="grid">
+  <div class="card"><b id="tw">{{ st.total_words }}</b><span>слов сменилось</span></div>
+  <div class="card"><b><span id="ts">{{ st.total_sum|price }}</span> €</b><span>всего заплатили</span></div>
+  <a class="card tg" href="{{ cfg.CHANNEL_URL }}" target="_blank" rel="noopener"><b>Telegram</b><span>Подпишись на канал, там всё видно первым</span></a>
+</section>
+
+<section class="how">
+  <h2>Как это работает</h2>
+  <ol>
+    <li><b>Нажми «Заменить слово»</b> и оставь слово, ссылку и контакт.</li>
+    <li><b>Модерация</b> смотрит заявку (обычно несколько минут).</li>
+    <li><b>5 минут на оплату.</b> Bizum, крипта или карта Монобанка. Не успел — очередь слетает.</li>
+    <li><b>Слово на сайте</b> и в канале. Пока кто-нибудь не перебьёт.</li>
+  </ol>
+</section>
+
+<dialog id="dlg">
+  <form id="form" method="dialog">
+    <button type="button" class="x" id="close" aria-label="Закрыть">×</button>
+    <h3>Заявка на слово</h3>
+    <p class="muted">Цена: <b>{{ st.next_price|price }} €</b>. Фиксируется, когда модерация одобрит заявку.</p>
+    <label>Слово или фраза
+      <input name="word" required maxlength="40" placeholder="Например: ПиццерияУМарии" autocomplete="off">
+      <small>Фраза склеится в одно слово без пробелов, до {{ cfg.MAX_WORD_LEN }} символов.</small>
+    </label>
+    <label>Ссылка (сайт, Instagram, Telegram, карта)
+      <input name="url" placeholder="https://…" inputmode="url">
+    </label>
+    <label>Название бизнеса
+      <input name="business" maxlength="80" placeholder="Пиццерия у Марии">
+    </label>
+    <label>Контакт для связи
+      <input name="contact" required maxlength="80" placeholder="@username или телефон">
+    </label>
+    <label class="check"><input type="checkbox" name="agree" required>
+      <span>Согласен с <a href="/rules" target="_blank">правилами</a>, <a href="/offer" target="_blank">офертой</a> и <a href="/privacy" target="_blank">политикой</a></span>
+    </label>
+    <div id="err" class="err" hidden></div>
+    <button class="btn big" id="send">Отправить на модерацию</button>
+  </form>
+</dialog>
+{% endblock %}
+{% block scripts %}<script src="/static/home.js"></script>{% endblock %}

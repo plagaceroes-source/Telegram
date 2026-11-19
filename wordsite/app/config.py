@@ -27,7 +27,7 @@ DB_PATH = os.getenv("DB_PATH", "wordsite.db")
 START_PRICE = _f("START_PRICE", 1)
 PAY_WINDOW = int(_f("PAY_WINDOW_SECONDS", 300))
 MAX_WORD_LEN = int(_f("MAX_WORD_LEN", 30))
-UAH_RATE = _f("UAH_RATE", 45)
+UAH_RATE = _f("UAH_RATE", 50)
 
 BIZUM_PHONE = os.getenv("BIZUM_PHONE", "")
 CRYPTO_ADDRESS = os.getenv("CRYPTO_ADDRESS", "")

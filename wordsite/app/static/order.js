@@ -2,13 +2,13 @@ const $=id=>document.getElementById(id);
 const token=$("order").dataset.token;
 let left=null,at=0,last=null;
 const MSG={
-  pending:["Заявка ушла на модерацию. Страницу не закрывай: как только одобрят, тут появятся реквизиты и таймер.",""],
-  approved:["Заявка одобрена! Оплати и нажми «Я оплатил».","ok"],
-  claimed:["Ждём подтверждения оплаты от модератора. Таймер остановлен.","ok"],
-  live:["🎉 Готово! Слово уже на главной.","ok"],
-  rejected:["Заявку отклонили. Загляни в правила и подай новую.","bad"],
-  expired:["Время вышло или оплата не пришла. Очередь слетела. Подай заявку заново.","bad"],
-  cancelled:["Заявка отменена.","bad"]
+  pending:["Заявка на модерации","Не закрывай страницу: после одобрения здесь появятся реквизиты и таймер.","wrap"],
+  approved:["Заявка одобрена!","Оплатите и нажмите «Я оплатил»",""],
+  claimed:["Ждём подтверждения","Модератор проверяет оплату. Таймер остановлен.","wrap"],
+  live:["Готово!","Слово уже на главной.",""],
+  rejected:["Заявка отклонена","Загляни в правила и подай новую.","bad"],
+  expired:["Время вышло","Очередь слетела. Подай заявку заново.","bad"],
+  cancelled:["Заявка отменена","","bad"]
 };
 function draw(){
   if(!last)return;
@@ -24,8 +24,10 @@ async function load(){
     const r=await fetch("/api/orders/"+token);const o=await r.json();
     last=o;left=o.left;at=Date.now();
     $("oword").textContent=o.word;
-    const m=MSG[o.status]||["",""];
-    const st=$("ostatus");st.textContent=m[0];st.className="status "+m[1];
+    const m=MSG[o.status]||["","",""];
+    const t=$("st-title"),sub=$("st-sub");
+    t.textContent=m[0];t.className="st-title"+(m[2]==="bad"?" bad":"");
+    sub.textContent=m[1];sub.className="st-sub"+(m[2]==="wrap"||m[2]==="bad"?" wrap":"");
     $("pay").hidden=o.status!=="approved";
     if(o.pay){
       $("p-eur").textContent=o.pay.eur;$("p-bizum").textContent=o.pay.bizum_phone;

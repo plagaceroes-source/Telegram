@@ -178,3 +178,16 @@ def test_backup_zip_contains_db_and_logos(tmp_path):
     c = sqlite3.connect(p)
     assert c.execute("select text from words").fetchone()[0] == "Копия"
     assert [n for n in service.make_backup(False) and zipfile.ZipFile(io.BytesIO(service.make_backup(False))).namelist()] == ["wordsite.db"]
+
+
+@pytest.mark.parametrize("raw,want", [
+    ("https://t.me/budvkurse_cb", "@budvkurse_cb"),
+    ('"https://t.me/budvkurse_cb"', "@budvkurse_cb"),
+    ("t.me/budvkurse_cb/", "@budvkurse_cb"),
+    ("@budvkurse_cb", "@budvkurse_cb"),
+    ("budvkurse_cb", "@budvkurse_cb"),
+    ("-1001234567890", "-1001234567890"),
+    ("", ""),
+])
+def test_channel_id_normalized(raw, want):
+    assert config._channel_id(raw) == want

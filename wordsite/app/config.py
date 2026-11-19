@@ -17,7 +17,22 @@ def _f(name, default):
 
 BOT_TOKEN = os.getenv("BOT_TOKEN", "").strip()
 MOD_CHAT_ID = int(os.getenv("MOD_CHAT_ID", "0") or 0)
-CHANNEL_ID = os.getenv("CHANNEL_ID", "").strip()
+def _channel_id(raw: str) -> str:
+    """@имя, -100… или ссылка t.me/имя (на публичный канал) приводятся к виду, который принимает Telegram."""
+    v = raw.strip().strip("\"'").strip()
+    low = v.lower()
+    for pre in ("https://t.me/", "http://t.me/", "t.me/"):
+        if low.startswith(pre):
+            name = v[len(pre):].split("?")[0].strip("/")
+            if name and not name.startswith("+") and "/" not in name and name != "joinchat":
+                return "@" + name
+            return v  # приватная ссылка-приглашение: нужен числовой id, оставляем как есть
+    if v and not v.startswith(("@", "-")) and not v.lstrip("-").isdigit():
+        return "@" + v
+    return v
+
+
+CHANNEL_ID = _channel_id(os.getenv("CHANNEL_ID", ""))
 CHANNEL_URL = os.getenv("CHANNEL_URL", "").strip()
 if CHANNEL_URL.rstrip("/") in ("https://t.me", "http://t.me", "t.me"):
     CHANNEL_URL = ""  # заглушка: канал не задан, ссылки на него скрываются

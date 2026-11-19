@@ -33,7 +33,20 @@ $("close").onclick=()=>dlg.close();
 // живой предпросмотр
 const pv=$("pv"),fw=$("f-word");
 function fitPv(){pv.style.fontSize="100px";const a=pv.parentElement.clientWidth-36;pv.style.fontSize=Math.min(56,100*a/pv.scrollWidth)+"px"}
-fw.addEventListener("input",()=>{pv.textContent=(fw.value.replace(/\s+/g,"")||"Ваше слово");fitPv()});
+const lp=$("logo-prev"),lf=$("f-logo");let hasLogo=false;
+const letter=()=>(fw.value.replace(/\s+/g,"")[0]||"А");
+fw.addEventListener("input",()=>{pv.textContent=(fw.value.replace(/\s+/g,"")||"Ваше слово");if(!hasLogo)lp.textContent=letter();fitPv()});
+function clearLogo(){lf.value="";hasLogo=false;lp.textContent=letter();$("logo-name").textContent="Выбрать файл";$("logo-clear").hidden=true}
+lf.addEventListener("change",()=>{
+  const f=lf.files[0];if(!f)return clearLogo();
+  const err=$("err");
+  if(f.size>2*1024*1024){clearLogo();err.textContent="Логотип больше 2 МБ";err.hidden=false;return}
+  if(!/^image\/(png|jpeg|webp)$/.test(f.type)){clearLogo();err.textContent="Подходят PNG, JPG и WebP";err.hidden=false;return}
+  err.hidden=true;hasLogo=true;
+  const img=new Image();img.src=URL.createObjectURL(f);lp.textContent="";lp.appendChild(img);
+  $("logo-name").textContent=f.name;$("logo-clear").hidden=false;
+});
+$("logo-clear").onclick=clearLogo;
 dlg.addEventListener("click",e=>{if(e.target===dlg)dlg.close()});
 new MutationObserver(fitPv).observe(dlg,{attributes:true,attributeFilter:["open"]});
 // активная заявка этого браузера
@@ -46,8 +59,8 @@ $("form").addEventListener("submit",async e=>{
   e.preventDefault();
   const f=e.target,err=$("err");err.hidden=true;$("send").disabled=true;
   try{
-    const r=await fetch("/api/orders",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({
-      word:f.word.value,url:f.url.value,business:f.business.value,contact:f.contact.value,agree:f.agree.checked})});
+    const fd=new FormData(f);fd.set("agree",f.agree.checked?"true":"false");
+    const r=await fetch("/api/orders",{method:"POST",body:fd});
     const j=await r.json();
     if(!r.ok)throw new Error(j.detail||"Не получилось");
     try{localStorage.setItem("mytoken",j.token)}catch(_){}

@@ -84,3 +84,53 @@ def test_anonymous_order():
     o = service.approve(o["id"])
     service.confirm_payment(o["id"])
     assert service.current_word()["text"] == "Секрет"
+
+
+def _png(size=(300, 200), fmt="PNG"):
+    import io
+    from PIL import Image
+    b = io.BytesIO()
+    Image.new("RGB", size, (200, 30, 30)).save(b, fmt)
+    return b.getvalue()
+
+
+def test_logo_saved_square_and_cleaned(tmp_path):
+    from PIL import Image
+    from app import images
+    config.LOGO_DIR = str(tmp_path / "logos")
+    name = images.save_logo(_png())
+    im = Image.open(tmp_path / "logos" / name)
+    assert im.size == (256, 256) and im.format == "PNG"
+    o = service.create_order("Лого", "", "", "", "", name)
+    service.reject(o["id"])
+    assert not (tmp_path / "logos" / name).exists()
+
+
+def test_logo_goes_live_and_can_be_dropped(tmp_path):
+    from app import images
+    config.LOGO_DIR = str(tmp_path / "logos")
+    a = service.create_order("А", "", "", "", "", images.save_logo(_png()))
+    b = service.create_order("Б", "", "", "", "", images.save_logo(_png()))
+    service.drop_logo(b["id"])
+    assert service.get_order(b["id"])["logo"] is None
+    service.confirm_payment(service.approve(a["id"])["id"])
+    assert service.current_word()["logo"]
+
+
+@pytest.mark.parametrize("data", [b"", b"not an image", b"<svg xmlns='http://www.w3.org/2000/svg'/>"])
+def test_logo_rejects_garbage(data, tmp_path):
+    from app import images
+    config.LOGO_DIR = str(tmp_path / "logos")
+    with pytest.raises(images.LogoError):
+        images.save_logo(data)
+
+
+def test_logo_rejects_gif_and_huge(tmp_path):
+    from app import images
+    config.LOGO_DIR = str(tmp_path / "logos")
+    with pytest.raises(images.LogoError):
+        images.save_logo(_png(fmt="GIF"))
+    config.MAX_LOGO_BYTES = 100
+    with pytest.raises(images.LogoError):
+        images.save_logo(_png())
+    config.MAX_LOGO_BYTES = 2 * 1024 * 1024

@@ -13,3 +13,4 @@ storage/incoming/*
 
 wordsite/.env
 wordsite/.venv/
+wordsite/logos/

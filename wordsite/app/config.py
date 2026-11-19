@@ -36,3 +36,6 @@ MONO_CARD = os.getenv("MONO_CARD", "")
 
 OPERATOR_NAME = os.getenv("OPERATOR_NAME", "[имя оператора]")
 OPERATOR_EMAIL = os.getenv("OPERATOR_EMAIL", "[email]")
+
+LOGO_DIR = os.getenv("LOGO_DIR", str(Path(DB_PATH).resolve().parent / "logos"))
+MAX_LOGO_BYTES = int(_f("MAX_LOGO_BYTES", 2 * 1024 * 1024))

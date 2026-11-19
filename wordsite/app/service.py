@@ -6,7 +6,7 @@ import threading
 import time
 from math import ceil
 
-from . import config
+from . import config, images
 
 _lock = threading.RLock()
 _conn: sqlite3.Connection | None = None
@@ -14,13 +14,13 @@ _conn: sqlite3.Connection | None = None
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS words(
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  text TEXT NOT NULL, url TEXT, business TEXT,
+  text TEXT NOT NULL, url TEXT, business TEXT, logo TEXT,
   price REAL NOT NULL, started_at REAL NOT NULL, ended_at REAL
 );
 CREATE TABLE IF NOT EXISTS orders(
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   token TEXT UNIQUE NOT NULL,
-  word TEXT NOT NULL, url TEXT, business TEXT, contact TEXT NOT NULL,
+  word TEXT NOT NULL, url TEXT, business TEXT, logo TEXT, contact TEXT NOT NULL,
   ip TEXT, price REAL, status TEXT NOT NULL,
   method TEXT, created_at REAL NOT NULL,
   approved_at REAL, expires_at REAL, claimed_at REAL, paid_at REAL
@@ -40,6 +40,9 @@ def init(path: str | None = None):
     _conn = sqlite3.connect(path or config.DB_PATH, check_same_thread=False)
     _conn.row_factory = sqlite3.Row
     _conn.executescript(SCHEMA)
+    for t in ("words", "orders"):  # миграция старых баз
+        if "logo" not in [r["name"] for r in _q(f"PRAGMA table_info({t})")]:
+            _conn.execute(f"ALTER TABLE {t} ADD COLUMN logo TEXT")
     _conn.commit()
 
 
@@ -121,7 +124,7 @@ def history(limit=200):
 
 
 # ---------- заявки ----------
-def create_order(word, url, business, contact="", ip=""):
+def create_order(word, url, business, contact="", ip="", logo=None):
     with _lock:
         w = clean_word(word)
         u = clean_url(url)
@@ -135,8 +138,8 @@ def create_order(word, url, business, contact="", ip=""):
             raise OrderError("Очередь на модерацию переполнена, загляни позже")
         token = secrets.token_urlsafe(12)
         cur = _conn.execute(
-            "INSERT INTO orders(token,word,url,business,contact,ip,status,created_at) VALUES(?,?,?,?,?,?, 'pending', ?)",
-            (token, w, u, _clip(business, 80), contact, ip, time.time()))
+            "INSERT INTO orders(token,word,url,business,logo,contact,ip,status,created_at) VALUES(?,?,?,?,?,?,?, 'pending', ?)",
+            (token, w, u, _clip(business, 80), logo, contact, ip, time.time()))
         _conn.commit()
         return get_order(cur.lastrowid)
 
@@ -172,8 +175,9 @@ def reject(oid):
         o = get_order(oid)
         if not o or o["status"] != "pending":
             raise OrderError("Заявка уже обработана")
-        _conn.execute("UPDATE orders SET status='rejected' WHERE id=?", (oid,))
+        _conn.execute("UPDATE orders SET status='rejected', logo=NULL WHERE id=?", (oid,))
         _conn.commit()
+        images.delete_logo(o["logo"])
         return get_order(oid)
 
 
@@ -198,8 +202,9 @@ def cancel(token):
         o = get_order_by_token(token)
         if not o or o["status"] not in ("pending", "approved"):
             raise OrderError("Отменить уже нельзя")
-        _conn.execute("UPDATE orders SET status='cancelled' WHERE id=?", (o["id"],))
+        _conn.execute("UPDATE orders SET status='cancelled', logo=NULL WHERE id=?", (o["id"],))
         _conn.commit()
+        images.delete_logo(o["logo"])
         return get_order(o["id"])
 
 
@@ -213,8 +218,8 @@ def confirm_payment(oid):
             raise OrderError(f"Заявка в статусе «{o['status']}», подтверждать нечего")
         now = time.time()
         _conn.execute("UPDATE words SET ended_at=? WHERE ended_at IS NULL", (now,))
-        _conn.execute("INSERT INTO words(text,url,business,price,started_at) VALUES(?,?,?,?,?)",
-                      (o["word"], o["url"], o["business"], o["price"], now))
+        _conn.execute("INSERT INTO words(text,url,business,logo,price,started_at) VALUES(?,?,?,?,?,?)",
+                      (o["word"], o["url"], o["business"], o["logo"], o["price"], now))
         _conn.execute("UPDATE orders SET status='live', paid_at=? WHERE id=?", (now, oid))
         _conn.commit()
         return get_order(oid)
@@ -226,8 +231,9 @@ def deny_payment(oid):
         o = get_order(oid)
         if not o or o["status"] != "claimed":
             raise OrderError("Нечего отклонять")
-        _conn.execute("UPDATE orders SET status='expired' WHERE id=?", (oid,))
+        _conn.execute("UPDATE orders SET status='expired', logo=NULL WHERE id=?", (oid,))
         _conn.commit()
+        images.delete_logo(o["logo"])
         return get_order(oid)
 
 
@@ -237,8 +243,10 @@ def sweep_expired():
         rows = _q("SELECT * FROM orders WHERE status='approved' AND expires_at<=?", (time.time(),))
         ids = [r["id"] for r in rows]
         for i in ids:
-            _conn.execute("UPDATE orders SET status='expired' WHERE id=?", (i,))
+            _conn.execute("UPDATE orders SET status='expired', logo=NULL WHERE id=?", (i,))
         _conn.commit()
+        for r in rows:
+            images.delete_logo(r["logo"])
         return [dict(r) for r in rows]
 
 
@@ -265,3 +273,15 @@ def ping(vid: str) -> int:
     for k in [k for k, t in _online.items() if now - t > 45]:
         del _online[k]
     return max(1, len(_online))
+
+
+def drop_logo(oid):
+    """Модератор убрал логотип (заявка остаётся)."""
+    with _lock:
+        o = get_order(oid)
+        if not o or o["status"] not in ("pending", "approved", "claimed"):
+            raise OrderError("Заявка уже обработана")
+        _conn.execute("UPDATE orders SET logo=NULL WHERE id=?", (oid,))
+        _conn.commit()
+        images.delete_logo(o["logo"])
+        return get_order(oid)

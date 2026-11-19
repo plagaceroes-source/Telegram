@@ -1,0 +1,3 @@
+{% macro avatar(w, small=false) -%}
+<div class="avatar{% if small %} avatar-small{% endif %}">{% if w.logo %}<img src="/logos/{{ w.logo }}" alt="">{% else %}{{ w.text[:1] }}{% endif %}</div>
+{%- endmacro %}

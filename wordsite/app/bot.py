@@ -5,7 +5,9 @@ import logging
 from aiogram import Bot, Dispatcher, F
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
-from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup
+from pathlib import Path
+
+from aiogram.types import CallbackQuery, FSInputFile, InlineKeyboardButton, InlineKeyboardMarkup
 
 from . import config, service
 
@@ -34,8 +36,9 @@ def card(o, note=""):
     )
 
 
-def kb(*pairs):
-    return InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text=t, callback_data=d) for t, d in pairs]])
+def kb(*rows):
+    rows = [r if isinstance(r, list) else [r] for r in rows]
+    return InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text=t, callback_data=d) for t, d in r] for r in rows])
 
 
 async def start():
@@ -64,7 +67,17 @@ async def _send(text, markup=None, chat=None):
 
 
 async def notify_new(o):
-    await _send(card(o), kb(("✅ Одобрить", f"ok:{o['id']}"), ("❌ Отклонить", f"no:{o['id']}")))
+    rows = [[("✅ Одобрить", f"ok:{o['id']}"), ("❌ Отклонить", f"no:{o['id']}")]]
+    path = Path(config.LOGO_DIR) / o["logo"] if o.get("logo") else None
+    if bot and path and path.exists():
+        rows.append([("🖼 Убрать лого (слово оставить)", f"nologo:{o['id']}")])
+        try:
+            await bot.send_photo(config.MOD_CHAT_ID, FSInputFile(path), caption=card(o, "🖼 С логотипом, проверь картинку"),
+                                 reply_markup=kb(*rows))
+            return
+        except Exception:
+            log.exception("send_photo failed")
+    await _send(card(o), kb(*rows))
 
 
 async def notify_claimed(o):
@@ -73,7 +86,7 @@ async def notify_claimed(o):
         f"Способ: <b>{METHODS.get(o['method'], o['method'])}</b>, сумма <b>{o['price']:g} €</b>\n"
         f"Слово: <code>{_e(o['word'])}</code> · {_e(o['contact'])}\n"
         f"Проверь поступление и подтверди.",
-        kb(("💰 Оплата пришла", f"paid:{o['id']}"), ("🚫 Не пришла", f"nopay:{o['id']}")))
+        kb([("💰 Оплата пришла", f"paid:{o['id']}"), ("🚫 Не пришла", f"nopay:{o['id']}")]))
 
 
 async def notify_expired(o):
@@ -103,10 +116,34 @@ def _allowed(cb: CallbackQuery) -> bool:
 
 async def _done(cb: CallbackQuery, text):
     try:
-        await cb.message.edit_text(text, reply_markup=None, disable_web_page_preview=True)
+        if cb.message.photo:
+            await cb.message.edit_caption(caption=text, reply_markup=None)
+        else:
+            await cb.message.edit_text(text, reply_markup=None, disable_web_page_preview=True)
     except Exception:
         pass
     await cb.answer()
+
+
+@dp.callback_query(F.data.startswith("nologo:"))
+async def on_nologo(cb: CallbackQuery):
+    if not _allowed(cb):
+        return await cb.answer("Не здесь", show_alert=True)
+    oid = int(cb.data[7:])
+    try:
+        o = service.drop_logo(oid)
+    except service.OrderError as e:
+        return await cb.answer(str(e), show_alert=True)
+    keyboard = kb([("✅ Одобрить", f"ok:{oid}"), ("❌ Отклонить", f"no:{oid}")])
+    note = f"🖼 Логотип убран ({_e(cb.from_user.full_name)}): в круге будет первая буква слова."
+    try:
+        if cb.message.photo:
+            await cb.message.edit_caption(caption=card(o, note), reply_markup=keyboard)
+        else:
+            await cb.message.edit_text(card(o, note), reply_markup=keyboard, disable_web_page_preview=True)
+    except Exception:
+        pass
+    await cb.answer("Лого убрано")
 
 
 @dp.callback_query(F.data.startswith("ok:"))

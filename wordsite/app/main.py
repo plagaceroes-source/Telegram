@@ -6,13 +6,13 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 
-from . import bot, config, service
+from . import bot, config, images, service
 
 BASE = Path(__file__).parent
 log = logging.getLogger("web")
@@ -39,6 +39,8 @@ async def lifespan(app):
 
 
 app = FastAPI(lifespan=lifespan, docs_url=None, redoc_url=None)
+Path(config.LOGO_DIR).mkdir(parents=True, exist_ok=True)
+app.mount("/logos", StaticFiles(directory=config.LOGO_DIR), name="logos")
 app.mount("/static", StaticFiles(directory=BASE / "static"), name="static")
 templates = Jinja2Templates(directory=BASE / "templates")
 
@@ -105,7 +107,7 @@ async def order_page(request: Request, token: str):
 
 # ---------- API ----------
 def _public_word(w):
-    return w and {"text": w["text"], "url": w["url"], "business": w["business"],
+    return w and {"text": w["text"], "url": w["url"], "business": w["business"], "logo": w["logo"],
                   "price": w["price"], "started_at": w["started_at"]}
 
 
@@ -117,22 +119,20 @@ async def api_state(vid: str = ""):
             "total_words": s["total_words"], "total_sum": s["total_sum"]}
 
 
-class OrderIn(BaseModel):
-    word: str
-    url: str = ""
-    business: str = ""
-    contact: str = ""
-    agree: bool = False
-
-
 @app.post("/api/orders")
-async def api_create(body: OrderIn, request: Request):
-    if not body.agree:
+async def api_create(request: Request, word: str = Form(...), url: str = Form(""), business: str = Form(""),
+                     contact: str = Form(""), agree: bool = Form(False), logo: UploadFile | None = File(None)):
+    if not agree:
         raise HTTPException(400, "Нужно согласиться с правилами и офертой")
     ip = request.headers.get("x-forwarded-for", request.client.host if request.client else "").split(",")[0].strip()
+    name = None
     try:
-        o = service.create_order(body.word, body.url, body.business, body.contact, ip)
-    except service.OrderError as e:
+        service.clean_word(word)  # проверяем слово до записи файла
+        if logo and logo.filename:
+            name = images.save_logo(await logo.read(config.MAX_LOGO_BYTES + 1))
+        o = service.create_order(word, url, business, contact, ip, name)
+    except (service.OrderError, images.LogoError) as e:
+        images.delete_logo(name)
         raise HTTPException(400, str(e))
     await bot.notify_new(o)
     return {"token": o["token"]}

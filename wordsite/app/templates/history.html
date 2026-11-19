@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_macros.html" import avatar %}
 {% block title %}История — Мы из Бланки{% endblock %}
 {% block main %}
 <article class="narrow">
@@ -7,14 +8,14 @@
   <div class="hist">
     {% if cur %}
     <div class="row now">
-      <div class="w">{{ cur.text }}</div>
+      <div class="hrow">{{ avatar(cur, true) }}<div class="w">{{ cur.text }}</div></div>
       <div class="m">{% if cur.business %}{{ cur.business }} · {% endif %}{{ cur.price|price }} € · с {{ cur.started_at|date }}</div>
       <span class="tag">сейчас</span>
     </div>
     {% endif %}
     {% for w in items %}
     <div class="row">
-      <div class="w">{{ w.text }}</div>
+      <div class="hrow">{{ avatar(w, true) }}<div class="w">{{ w.text }}</div></div>
       <div class="m">{% if w.business %}{{ w.business }} · {% endif %}{{ w.price|price }} € · продержалось {{ (w.ended_at - w.started_at)|duration }} · {{ w.started_at|date }}</div>
     </div>
     {% endfor %}

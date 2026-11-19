@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_macros.html" import avatar %}
 {% block main %}
 {% set w = st.word %}
 <section class="hero">
@@ -13,7 +14,7 @@
 
 <section class="word-context">
   <div class="owner">
-    <div class="avatar" id="avatar">{% if w and w.business %}{{ w.business[:1] }}{% else %}<img src="/static/img/mascot.jpg" alt="">{% endif %}</div>
+    {{ avatar(w) if w else '<div class="avatar">?</div>'|safe }}
     <div class="owner-text">
       <strong id="owner">{% if w %}{{ w.business or 'Аноним' }}{% else %}Слово свободно{% endif %}</strong>
       {% if w and w.url %}<a class="url" id="url" href="{{ w.url }}" target="_blank" rel="nofollow noopener sponsored">{{ w.url|replace('https://','')|replace('http://','')|trim('/') }} ↗</a>
@@ -39,11 +40,11 @@
   <a class="history-heading" href="/history">История слов<span>↗</span></a>
   <div class="history-cards">
     {% if w %}
-    <div class="history-pill"><div class="avatar avatar-small">{% if w.business %}{{ w.business[:1] }}{% else %}<img src="/static/img/mascot.jpg" alt="">{% endif %}</div>
+    <div class="history-pill">{{ avatar(w, true) }}
       <span class="pill-word">{{ w.text }}</span><span class="pill-price">{{ w.price|price }} €</span><span class="status-current">Сейчас на главной</span></div>
     {% for h in recent %}
     <span class="flow-arrow">→</span>
-    <div class="history-pill"><div class="avatar avatar-small">{% if h.business %}{{ h.business[:1] }}{% else %}<img src="/static/img/mascot.jpg" alt="">{% endif %}</div>
+    <div class="history-pill">{{ avatar(h, true) }}
       <span class="pill-word">{{ h.text }}</span><span class="pill-price">{{ h.price|price }} €</span></div>
     {% endfor %}
     {% else %}<span class="empty-note">Пока пусто. Станешь первым в истории.</span>{% endif %}
@@ -67,6 +68,12 @@
     <fieldset>
       <legend>Подпись к слову</legend>
       <p class="muted sm">Всё необязательно. Оставь пустым — слово будет анонимным.</p>
+      <div class="field"><span class="lbl"><b>Логотип</b><em>необязательно</em></span>
+        <label class="logo-pick"><span class="logo-prev" id="logo-prev">А</span>
+          <span class="logo-txt"><b id="logo-name">Выбрать файл</b><small>PNG, JPG или WebP до 2 МБ, лучше квадрат. Без лого в круге будет первая буква слова. Лого проходит модерацию.</small></span>
+          <input type="file" name="logo" id="f-logo" accept="image/png,image/jpeg,image/webp" hidden></label>
+        <button type="button" class="link" id="logo-clear" hidden>Убрать логотип</button>
+      </div>
       <label class="field"><b>Имя или название</b>
         <input name="business" maxlength="80" autocomplete="off">
       </label>

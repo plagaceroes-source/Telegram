@@ -122,3 +122,46 @@ def make_cover(word, price, next_price, business="", url="", logo_path=None) -> 
     out = io.BytesIO()
     im.resize((W, H), Image.LANCZOS).save(out, "PNG", optimize=True)
     return out.getvalue()
+
+
+def make_announce_cover(site="somosdeblanca.info", price=1, word="ТВОЁСЛОВО", tag="СЛОВО НА ПРОДАЖУ") -> bytes:
+    """Обложка анонса запуска: огромное слово, адрес сайта и цена первого слова."""
+    im = Image.new("RGB", (W * S, H * S), PAPER)
+    d = ImageDraw.Draw(im)
+    m = MARGIN * S
+    f_logo = font(40)
+    tr = -0.055 * 40 * S
+    _draw_tracked(d, (m, 46 * S), "МЫ ИЗ", f_logo, INK, tr)
+    _draw_tracked(d, (m, 46 * S + 38 * S), "БЛАНКИ", f_logo, INK, tr)
+    f_tag = font(26, 650)
+    tw = f_tag.getlength(tag)
+    x1, y1 = W * S - m, 62 * S
+    d.rounded_rectangle((x1 - tw - 44 * S, y1, x1, y1 + 56 * S), radius=28 * S, outline=YELLOW, width=2 * S)
+    d.text((x1 - tw - 22 * S, y1 + 13 * S), tag, font=f_tag, fill=INK)
+    d.line((m, 160 * S, W * S - m, 160 * S), fill=YELLOW, width=2 * S)
+
+    f_word, size = _fit_font(word, (W - 2 * MARGIN) * S, 280)
+    track = -0.055 * size * S
+    cap = f_word.getbbox("H")
+    word_top = 492 * S - (cap[3] - cap[1])
+    _draw_tracked(d, (m, word_top - cap[1]), word, f_word, INK, track)
+    cw = 150 * S
+    cx0, cy0 = m + 6 * S, word_top - 108 * S
+    pts = [(8, 78), (20, 22), (46, 56), (66, 8), (90, 56), (116, 26), (112, 80), (8, 78)]
+    pts = [(cx0 + x / 130 * cw, cy0 + y / 100 * cw * 100 / 130) for x, y in pts]
+    d.line(pts, fill=YELLOW, width=5 * S, joint="curve")
+
+    base_y = 590 * S
+    f_site, f_sub = font(38, 750), font(24, 450)
+    d.text((m, base_y - 44 * S), f"{site} ↗", font=f_site, fill=INK)
+    d.text((m, base_y + 8 * S), "Одно слово на всю Коста-Бланку", font=f_sub, fill=MUTED)
+    f_big, f_small = font(46, 800), font(24, 500)
+    pr, nx = f"от {price:g} €", "каждая замена ×2"
+    bw = max(f_big.getlength(pr), f_small.getlength(nx)) + 56 * S
+    bx1, bx0 = W * S - m, W * S - m - bw
+    d.rounded_rectangle((bx0, base_y - 62 * S, bx1, base_y + 62 * S), radius=30 * S, outline=YELLOW, width=2 * S)
+    d.text((bx0 + 28 * S, base_y - 50 * S), pr, font=f_big, fill=INK)
+    d.text((bx0 + 28 * S, base_y + 14 * S), nx, font=f_small, fill=MUTED)
+    out = io.BytesIO()
+    im.resize((W, H), Image.LANCZOS).save(out, "PNG", optimize=True)
+    return out.getvalue()

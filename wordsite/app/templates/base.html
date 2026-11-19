@@ -30,7 +30,7 @@
 <main>{% block main %}{% endblock %}</main>
 <footer>
   <div>
-    <a href="{{ cfg.CHANNEL_URL }}" target="_blank" rel="noopener">Telegram-канал</a>
+    {% if cfg.CHANNEL_URL %}<a href="{{ cfg.CHANNEL_URL }}" target="_blank" rel="noopener">Telegram-канал</a>{% endif %}
     <a href="/offer">Оферта</a><a href="/privacy">Политика</a><a href="/about">Контакты</a>
   </div>
   <div>© Мы из Бланки. Чайка одобряет, но ответственности не несёт.</div>

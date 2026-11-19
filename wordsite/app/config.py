@@ -18,7 +18,9 @@ def _f(name, default):
 BOT_TOKEN = os.getenv("BOT_TOKEN", "").strip()
 MOD_CHAT_ID = int(os.getenv("MOD_CHAT_ID", "0") or 0)
 CHANNEL_ID = os.getenv("CHANNEL_ID", "").strip()
-CHANNEL_URL = os.getenv("CHANNEL_URL", "https://t.me/").strip()
+CHANNEL_URL = os.getenv("CHANNEL_URL", "").strip()
+if CHANNEL_URL.rstrip("/") in ("https://t.me", "http://t.me", "t.me"):
+    CHANNEL_URL = ""  # заглушка: канал не задан, ссылки на него скрываются
 SUPPORT_USERNAME = os.getenv("SUPPORT_USERNAME", "").lstrip("@")
 
 SITE_URL = os.getenv("SITE_URL", "http://localhost:8000").rstrip("/")

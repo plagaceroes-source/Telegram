@@ -67,7 +67,7 @@ templates.env.filters["price"] = lambda p: f"{p:g}"
 
 @app.get("/")
 async def home(request: Request):
-    return render(request, "home.html")
+    return render(request, "home.html", recent=service.history(2))
 
 
 @app.get("/rules")

@@ -4,7 +4,7 @@ function vid(){
   catch(e){return "anon"+Math.random().toString(36).slice(2)}
 }
 window.VID=vid();
-window.onState=window.onState||function(){};
+window.onState=window.onState||function(s){var p=document.getElementById("price");if(p)p.textContent=+s.next_price.toFixed(2)};
 async function tick(){
   try{
     const r=await fetch("/api/state?vid="+encodeURIComponent(VID));

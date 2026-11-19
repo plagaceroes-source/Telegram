@@ -13,22 +13,27 @@
 <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
-<header class="top">
-  <a class="brand" href="/"><img src="/static/img/mascot.jpg" alt=""><span>Мы из Бланки</span></a>
+<header class="site-header">
+  <a class="logo" href="/">Мы из<br>Бланки<sup>®</sup></a>
+  <a class="replace-button" id="open" href="/?buy=1">
+    <svg viewBox="0 0 24 30" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M14 2 3 17h8l-2 11 12-16h-8z"/></svg>
+    <span>Заменить слово за <b id="price">{{ st.next_price|price }}</b>&nbsp;€</span>
+    <svg viewBox="0 0 30 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12h25M18 3l9 9-9 9"/></svg>
+  </a>
+  <div class="online" title="Сейчас на сайте"><i></i><b id="online">1</b> онлайн</div>
   <nav>
     <a href="/rules" {% if page=='rules' %}class="on"{% endif %}>Правила</a>
     <a href="/history" {% if page=='history' %}class="on"{% endif %}>История</a>
     <a href="/about" {% if page=='about' %}class="on"{% endif %}>О проекте</a>
   </nav>
-  <div class="online" title="Сейчас на сайте"><i></i><b id="online">1</b> онлайн</div>
 </header>
 <main>{% block main %}{% endblock %}</main>
 <footer>
   <div>
-    <a href="{{ cfg.CHANNEL_URL }}" target="_blank" rel="noopener">Telegram-канал</a> ·
-    <a href="/offer">Оферта</a> · <a href="/privacy">Политика</a> · <a href="/about">Контакты</a>
+    <a href="{{ cfg.CHANNEL_URL }}" target="_blank" rel="noopener">Telegram-канал</a>
+    <a href="/offer">Оферта</a><a href="/privacy">Политика</a><a href="/about">Контакты</a>
   </div>
-  <div class="muted">© Мы из Бланки. Чайка одобряет, но ответственности не несёт.</div>
+  <div>© Мы из Бланки. Чайка одобряет, но ответственности не несёт.</div>
 </footer>
 <script src="/static/app.js"></script>
 {% block scripts %}{% endblock %}

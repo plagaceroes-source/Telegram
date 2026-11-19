@@ -1,38 +1,34 @@
 const $=id=>document.getElementById(id);
-let curText=null;
+const el=$("word");
 function fit(){
-  const el=$("word");if(!el)return;
-  el.style.fontSize="";
-  const wrap=el.parentElement;
-  let fs=parseFloat(getComputedStyle(el).fontSize);
-  while(el.scrollWidth>wrap.clientWidth-8&&fs>18){fs-=2;el.style.fontSize=fs+"px"}
+  if(!el)return;
+  el.style.fontSize="100px";
+  const avail=el.parentElement.clientWidth;
+  let fs=100*avail/el.scrollWidth*0.975;
+  fs=Math.min(fs,innerWidth*0.23);
+  el.style.fontSize=fs+"px";
 }
 addEventListener("resize",fit);document.fonts&&document.fonts.ready.then(fit);fit();
-curText=$("word").textContent;
+const startText=el.textContent.trim();
 let lockLeft=null,lockAt=0;
 function drawLock(){
-  const el=$("lock");
-  if(lockLeft===null){el.hidden=true;return}
-  el.hidden=false;
-  if(lockLeft===-1){el.textContent="⏳ Слот занят: проверяем оплату. Скоро освободится или слово сменится";return}
+  const l=$("lock");
+  if(lockLeft===null){l.hidden=true;return}
+  l.hidden=false;
+  if(lockLeft===-1){l.textContent="⏳ Слот занят: проверяем оплату";return}
   const left=Math.max(0,lockLeft-Math.round((Date.now()-lockAt)/1000));
-  const m=String(Math.floor(left/60)).padStart(2,"0"),s=String(left%60).padStart(2,"0");
-  el.textContent=`⏳ Слот занят: кто-то платит. Освободится не позже чем через ${m}:${s}`;
+  l.textContent=`⏳ Слот занят: кто-то платит. Освободится не позже чем через ${String(Math.floor(left/60)).padStart(2,"0")}:${String(left%60).padStart(2,"0")}`;
 }
 setInterval(drawLock,1000);
 window.onState=function(s){
-  $("price").textContent=+s.next_price.toFixed(2);
-  $("tw").textContent=s.total_words;$("ts").textContent=+s.total_sum.toFixed(2);
+  const p=+s.next_price.toFixed(2);
+  $("price").textContent=p;$("price2").textContent=p;$("tw").textContent=s.total_words;
   lockLeft=s.locked?s.lock_left:null;lockAt=Date.now();drawLock();
-  const w=s.word,el=$("word");
-  if(w){
-    if(w.text!==curText){curText=w.text;el.textContent=w.text;el.classList.remove("flash");void el.offsetWidth;el.classList.add("flash");fit()}
-    if(w.url){el.tagName==="A"&&(el.href=w.url)}
-    $("by").textContent=(w.business?"Купил: "+w.business+" · ":"")+"заплатил "+(+w.price.toFixed(2))+" €";
-  }
+  if(s.word&&s.word.text.toUpperCase()!==startText.toUpperCase())location.reload();
 };
 const dlg=$("dlg");
-$("open").onclick=()=>dlg.showModal();
+$("open").addEventListener("click",e=>{e.preventDefault();dlg.showModal()});
+if(location.search.includes("buy=1"))dlg.showModal();
 $("close").onclick=()=>dlg.close();
 $("form").addEventListener("submit",async e=>{
   e.preventDefault();

@@ -76,3 +76,11 @@ def test_bad_url():
     with pytest.raises(service.OrderError):
         service.clean_url("javascript:alert(1)")
     assert service.clean_url("https://a.com") == "https://a.com"
+
+
+def test_anonymous_order():
+    o = service.create_order("Секрет", "", "", "")
+    assert o["business"] == "" and o["url"] is None and o["contact"] == ""
+    o = service.approve(o["id"])
+    service.confirm_payment(o["id"])
+    assert service.current_word()["text"] == "Секрет"

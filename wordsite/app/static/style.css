@@ -50,11 +50,6 @@ a.word:hover{filter:brightness(1.1)}
 .hist .m{color:var(--muted);font-size:14px}
 .tag{position:absolute;right:14px;top:14px;background:transparent;border:1px solid var(--yellow);color:var(--ink);font-size:12px;font-weight:700;padding:2px 10px;border-radius:999px}
 
-dialog{border:1px solid var(--yellow);border-radius:25px;background:#f8f6f4;color:var(--ink);padding:0;width:min(480px,calc(100vw - 24px))}
-dialog::backdrop{background:#0008;backdrop-filter:blur(3px)}
-dialog form{padding:26px;position:relative;display:flex;flex-direction:column;gap:14px}
-dialog h3{margin:0;font-size:22px}
-.x{position:absolute;right:14px;top:10px;background:none;border:0;color:var(--muted);font-size:30px;cursor:pointer}
 label{display:flex;flex-direction:column;gap:6px;font-size:14px;color:var(--muted)}
 label small{font-size:12px}
 input[type=text],input:not([type]),input[inputmode]{background:transparent;border:1px solid var(--line);color:var(--ink);
@@ -179,3 +174,28 @@ footer div:first-child{display:flex;gap:18px;flex-wrap:wrap}
   footer{flex-direction:column;gap:14px;margin-top:40px}
   footer div:first-child{display:grid;grid-template-columns:1fr 1fr;gap:12px 24px;font-size:14px}
 }
+
+/* ---------- окно заявки ---------- */
+dialog{border:1px solid var(--yellow);border-radius:28px;background:var(--bg);color:var(--ink);padding:0;width:min(560px,calc(100vw - 24px));max-height:calc(100dvh - 24px)}
+dialog::backdrop{background:#0007;backdrop-filter:blur(3px)}
+dialog form{padding:clamp(22px,4vw,34px);position:relative;display:flex;flex-direction:column;gap:16px}
+.x{position:absolute;right:16px;top:16px;width:44px;height:44px;border-radius:50%;background:transparent;border:1px solid var(--yellow);color:var(--ink);font-size:26px;line-height:1;cursor:pointer;display:grid;place-items:center;padding:0 0 3px}
+.eyebrow{font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase}
+.dlg-title{font-size:clamp(34px,8.5vw,52px);line-height:.98;letter-spacing:-.065em;margin:0}
+.sm{font-size:13px;margin:0}.center{text-align:center}
+.field{display:flex;flex-direction:column;gap:7px;color:var(--ink);font-size:15px}
+.field .lbl{display:flex;justify-content:space-between;align-items:baseline}
+.field .lbl em{font-style:normal;color:var(--muted);font-size:14px}
+.field small{color:var(--muted);font-size:12px}
+dialog input[type=text],dialog input:not([type]),dialog input[inputmode]{height:54px;border-radius:16px;font-size:17px;padding:0 16px;background:transparent}
+.preview{border:1px solid var(--yellow);border-radius:20px;padding:12px 18px 14px;text-align:center;overflow:hidden}
+.preview small{font-size:12px;color:var(--muted)}
+.pv{font-weight:900;letter-spacing:-.055em;text-transform:uppercase;line-height:1;white-space:nowrap;font-size:56px;margin-top:6px;padding-bottom:.06em}
+dialog fieldset{border:1px solid var(--yellow);border-radius:20px;margin:0;padding:6px 18px 16px;display:flex;flex-direction:column;gap:12px;min-width:0}
+dialog legend{font-weight:800;letter-spacing:-.03em;font-size:18px;padding:0 8px}
+.price-row{display:flex;justify-content:space-between;align-items:center;margin-top:6px}
+.price-row>span{font-size:18px}
+.price-row strong{font-size:clamp(34px,8vw,48px);font-weight:900;letter-spacing:-.06em}
+dialog label.check{align-items:flex-start;color:var(--ink);font-size:15px;line-height:1.4;gap:14px}
+dialog label.check input{width:26px;height:26px;margin:0;flex-shrink:0}
+dialog .btn.big{width:100%;text-align:left;border-radius:20px;padding:20px 26px;font-size:20px}

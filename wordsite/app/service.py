@@ -121,13 +121,11 @@ def history(limit=200):
 
 
 # ---------- заявки ----------
-def create_order(word, url, business, contact, ip=""):
+def create_order(word, url, business, contact="", ip=""):
     with _lock:
         w = clean_word(word)
         u = clean_url(url)
-        contact = _clip(contact, 80)
-        if len(contact) < 3:
-            raise OrderError("Оставь контакт: @username в Telegram или телефон")
+        contact = _clip(contact, 80)  # необязателен: заказ открывается по секретной ссылке
         if ip:
             n = _one("SELECT COUNT(*) c FROM orders WHERE ip=? AND created_at>? AND status IN ('pending','approved','claimed')",
                      (ip, time.time() - 3600))["c"]

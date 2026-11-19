@@ -13,9 +13,9 @@
 
 <section class="word-context">
   <div class="owner">
-    <div class="avatar" id="avatar">{{ ((w.business or w.text) if w else '?')[:1] }}</div>
+    <div class="avatar" id="avatar">{% if w and w.business %}{{ w.business[:1] }}{% else %}<img src="/static/img/mascot.jpg" alt="">{% endif %}</div>
     <div class="owner-text">
-      <strong id="owner">{% if w %}{{ w.business or 'Покупатель' }}{% else %}Слово свободно{% endif %}</strong>
+      <strong id="owner">{% if w %}{{ w.business or 'Аноним' }}{% else %}Слово свободно{% endif %}</strong>
       {% if w and w.url %}<a class="url" id="url" href="{{ w.url }}" target="_blank" rel="nofollow noopener sponsored">{{ w.url|replace('https://','')|replace('http://','')|trim('/') }} ↗</a>
       <small id="urlnote">Ссылка указана покупателем</small>{% elif not w %}<span class="url muted" style="display:block">Занимай первым за {{ st.next_price|price }} €</span>{% endif %}
     </div>
@@ -27,7 +27,7 @@
   </div>
 </section>
 
-<div class="lock-row"><div id="lock" class="lock" hidden></div></div>
+<div class="lock-row"><div id="lock" class="lock" hidden></div> <a id="myorder" class="lock" href="#" hidden>Твоя заявка →</a></div>
 
 <section class="stats">
   <div><strong id="tw">{{ st.total_words }}</strong><span>слов<br>куплено</span></div>
@@ -39,11 +39,11 @@
   <a class="history-heading" href="/history">История слов<span>↗</span></a>
   <div class="history-cards">
     {% if w %}
-    <div class="history-pill"><div class="avatar avatar-small">{{ (w.business or w.text)[:1] }}</div>
+    <div class="history-pill"><div class="avatar avatar-small">{% if w.business %}{{ w.business[:1] }}{% else %}<img src="/static/img/mascot.jpg" alt="">{% endif %}</div>
       <span class="pill-word">{{ w.text }}</span><span class="pill-price">{{ w.price|price }} €</span><span class="status-current">Сейчас на главной</span></div>
     {% for h in recent %}
     <span class="flow-arrow">→</span>
-    <div class="history-pill"><div class="avatar avatar-small">{{ (h.business or h.text)[:1] }}</div>
+    <div class="history-pill"><div class="avatar avatar-small">{% if h.business %}{{ h.business[:1] }}{% else %}<img src="/static/img/mascot.jpg" alt="">{% endif %}</div>
       <span class="pill-word">{{ h.text }}</span><span class="pill-price">{{ h.price|price }} €</span></div>
     {% endfor %}
     {% else %}<span class="empty-note">Пока пусто. Станешь первым в истории.</span>{% endif %}
@@ -53,26 +53,47 @@
 <dialog id="dlg">
   <form id="form" method="dialog">
     <button type="button" class="x" id="close" aria-label="Закрыть">×</button>
-    <h3>Заявка на слово</h3>
-    <p class="muted">Цена: <b>{{ st.next_price|price }} €</b>. Фиксируется, когда модерация одобрит заявку.</p>
-    <label>Слово или фраза
-      <input name="word" required maxlength="40" placeholder="Например: ПиццерияУМарии" autocomplete="off">
-      <small>Фраза склеится в одно слово без пробелов, до {{ cfg.MAX_WORD_LEN }} символов.</small>
+    <div class="eyebrow">Заявка</div>
+    <h2 class="dlg-title">Позволь себе<br>одно слово.</h2>
+    <p class="muted">Оно займёт всю главную. Пока кто-нибудь не позволит себе больше.</p>
+
+    <label class="field"><span class="lbl"><b>Твоё слово</b><em>до {{ cfg.MAX_WORD_LEN }} знаков</em></span>
+      <input name="word" id="f-word" required maxlength="40" placeholder="Например, МОГУ…" autocomplete="off">
+      <small>Фраза склеится в одно слово без пробелов.</small>
     </label>
-    <label>Ссылка (сайт, Instagram, Telegram, карта)
-      <input name="url" placeholder="https://…" inputmode="url">
-    </label>
-    <label>Название бизнеса
-      <input name="business" maxlength="80" placeholder="Пиццерия у Марии">
-    </label>
-    <label>Контакт для связи
-      <input name="contact" required maxlength="80" placeholder="@username или телефон">
-    </label>
+
+    <div class="preview"><small>Так это будет выглядеть</small><div id="pv" class="pv">ВАШЕ СЛОВО</div></div>
+
+    <fieldset>
+      <legend>Подпись к слову</legend>
+      <p class="muted sm">Всё необязательно. Оставь пустым — слово будет анонимным.</p>
+      <label class="field"><b>Имя или название</b>
+        <input name="business" maxlength="80" autocomplete="off">
+      </label>
+      <label class="field"><span class="lbl"><b>Соцсеть или сайт</b><em>необязательно</em></span>
+        <input name="url" placeholder="https://…" inputmode="url" autocomplete="off">
+      </label>
+      <p class="muted sm">Ссылки проходят модерацию, см. <a href="/rules" target="_blank">правила</a>.</p>
+    </fieldset>
+
+    <fieldset>
+      <legend>Связь с нами</legend>
+      <label class="field"><span class="lbl"><b>@username или телефон</b><em>необязательно</em></span>
+        <input name="contact" maxlength="80" autocomplete="off">
+      </label>
+      <p class="muted sm">Увидит только модерация. Без контакта продолжить можно по ссылке на заявку, которую ты получишь после отправки: сохрани её.</p>
+    </fieldset>
+
+    <div class="price-row"><span>Текущая цена</span><strong><span id="price3">{{ st.next_price|price }}</span>&nbsp;€</strong></div>
+    <p class="muted sm">Цена фиксируется, когда модерация одобрит заявку. После этого {{ cfg.PAY_WINDOW // 60 }} минут на оплату.</p>
+
     <label class="check"><input type="checkbox" name="agree" required>
-      <span>Согласен с <a href="/rules" target="_blank">правилами</a>, <a href="/offer" target="_blank">офертой</a> и <a href="/privacy" target="_blank">политикой</a></span>
-    </label>
+      <span>Согласен на публикацию указанных данных (имя и ссылка видны на сайте и в канале).</span></label>
+    <p class="muted sm">Отправляя заявку, ты принимаешь <a href="/offer" target="_blank">публичную оферту</a> и <a href="/rules" target="_blank">правила</a>. <a href="/privacy" target="_blank">Политика обработки данных</a>.</p>
+
     <div id="err" class="err" hidden></div>
-    <button class="btn big" id="send">Отправить на модерацию</button>
+    <button class="btn big" id="send">Отправить заявку</button>
+    <p class="muted sm center">Заявка проходит модерацию до оплаты.</p>
   </form>
 </dialog>
 {% endblock %}

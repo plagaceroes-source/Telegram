@@ -26,8 +26,8 @@ def card(o, note=""):
         f"🆕 <b>Заявка #{o['id']}</b>\n"
         f"Слово: <code>{_e(o['word'])}</code>\n"
         f"Ссылка: {_e(o['url'])}\n"
-        f"Бизнес: {_e(o['business'])}\n"
-        f"Контакт: {_e(o['contact'])}"
+        f"Подпись: {_e(o['business']) if o['business'] or o['url'] else 'аноним (только слово)'}\n"
+        f"Контакт (видит только модерация): {_e(o['contact'])}"
         f"{price}\n"
         f"Заказ: {config.SITE_URL}/o/{o['token']}"
         + (f"\n\n{note}" if note else "")

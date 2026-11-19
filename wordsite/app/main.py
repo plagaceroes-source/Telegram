@@ -121,7 +121,7 @@ class OrderIn(BaseModel):
     word: str
     url: str = ""
     business: str = ""
-    contact: str
+    contact: str = ""
     agree: bool = False
 
 

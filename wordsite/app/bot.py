@@ -136,13 +136,19 @@ async def send_post(chat_id, o):
 
 
 async def announce(o):
-    """Пост в канал при смене слова."""
-    if not (bot and config.CHANNEL_ID):
+    """Пост в канал при смене слова. Если не вышло, пишет об этом в группу модерации."""
+    if not bot:
+        return
+    if not config.CHANNEL_ID:
+        await _send("ℹ️ Слово на сайте, но пост в канал не ушёл: в настройках не задан CHANNEL_ID.")
         return
     try:
         await send_post(config.CHANNEL_ID, o)
-    except Exception:
+    except Exception as e:
         log.exception("channel post failed")
+        await _send("⚠️ Слово на сайте, но пост в канал не опубликован. "
+                    "Проверь CHANNEL_ID и что бот админ канала с правом публикации.\n"
+                    f"Ошибка: <code>{_e(str(e)[:200])}</code>")
 
 
 @dp.message(Command("backup"))

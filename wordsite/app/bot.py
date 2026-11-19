@@ -100,7 +100,7 @@ def post_text(o):
     """Текст поста в канал."""
     nxt = service.next_price()
     who = _e(o["business"]) if o.get("business") else "Аноним"
-    lines = [f"🔄 <b>На главной новое слово: {_e(o['word']).upper()}</b>", "", f"Купил: {who}"]
+    lines = [f"<b>На главной новое слово: {_e(o['word']).upper()}</b>", "", f"Купил: {who}"]
     if o.get("url"):
         lines.append(f"Ссылка: {_e(o['url'])}")
     lines += [

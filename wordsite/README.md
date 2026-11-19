@@ -28,3 +28,18 @@ python -m pytest tests # (pip install pytest)
 - Реквизиты оплаты и данные оператора для оферты: в `.env`.
 - Юридические страницы (`offer.html`, `privacy.html`) — черновики, нужна проверка юристом.
 - Один процесс (сайт + бот + таймер); SQLite-файл `DB_PATH`. Не запускай несколько копий.
+
+## Деплой на Railway
+1. Railway → **New Project → Deploy from GitHub repo** → этот репозиторий, ветка с проектом.
+2. В сервисе: **Settings → Source → Root Directory = `wordsite`** (в корне репозитория лежит `railway.json` другого проекта, он не нужен). Сборка и запуск берутся из `wordsite/railway.json`.
+3. **Settings → Volumes → + Add Volume**, mount path `/data` (база и логотипы).
+4. **Variables:**
+   - `DB_PATH=/data/wordsite.db`, `LOGO_DIR=/data/logos`
+   - `BOT_TOKEN`, `MOD_CHAT_ID`, `CHANNEL_ID`, `CHANNEL_URL`, `SUPPORT_USERNAME`
+   - `SITE_URL=https://<твой-домен>`
+   - `BIZUM_PHONE`, `MONO_CARD`, `CRYPTO_ADDRESS`, `CRYPTO_NETWORK`, `UAH_RATE`, `START_PRICE`
+   - `OPERATOR_NAME`, `OPERATOR_EMAIL`
+5. **Settings → Networking → Generate Domain** (потом свой домен через Custom Domain).
+6. Проверка: `https://<домен>/health` отвечает `{"ok": true}`.
+
+Реплика должна быть одна (`numReplicas: 1`): внутри работает бот на long polling и таймер заявок. Две копии бота = конфликт Telegram.

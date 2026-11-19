@@ -67,6 +67,11 @@ templates.env.filters["date"] = lambda t: datetime.fromtimestamp(t, ZoneInfo("Eu
 templates.env.filters["price"] = lambda p: f"{p:g}"
 
 
+@app.get("/health")
+async def health():
+    return {"ok": True}
+
+
 @app.get("/")
 async def home(request: Request):
     return render(request, "home.html", recent=service.history(2))

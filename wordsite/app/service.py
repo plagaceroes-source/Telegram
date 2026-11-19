@@ -1,9 +1,12 @@
 """Бизнес-логика: слова, заявки, слот, цена x2. Синхронно, SQLite, одна блокировка."""
+import io
 import re
 import secrets
 import sqlite3
+import tempfile
 import threading
 import time
+import zipfile
 from math import ceil
 
 from . import config, images
@@ -300,3 +303,21 @@ def reset_all():
         for name in logos:
             images.delete_logo(name)
         return n_words, n_orders
+
+
+def make_backup(with_logos=True) -> bytes:
+    """Zip: согласованная копия базы (wordsite.db) + логотипы. Безопасно при работающем сайте."""
+    from pathlib import Path
+    with _lock, tempfile.TemporaryDirectory() as tmp:
+        dst = Path(tmp) / "wordsite.db"
+        out = sqlite3.connect(dst)
+        _conn.backup(out)
+        out.close()
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+            z.write(dst, "wordsite.db")
+            logos = Path(config.LOGO_DIR)
+            if with_logos and logos.is_dir():
+                for f in sorted(logos.glob("*.png")):
+                    z.write(f, f"logos/{f.name}")
+        return buf.getvalue()

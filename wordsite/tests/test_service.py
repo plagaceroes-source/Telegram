@@ -162,3 +162,19 @@ def test_post_text_next_price_is_double():
     assert "Заплатили: <b>2 €</b>" in t and "<b>4 €</b>" in t
     t = bot.post_text({"word": "Привет", "price": 1, "business": "", "url": None})
     assert "<b>2 €</b>" in t
+
+
+def test_backup_zip_contains_db_and_logos(tmp_path):
+    import io, sqlite3, zipfile
+    from app import images
+    config.LOGO_DIR = str(tmp_path / "logos")
+    name = images.save_logo(_png())
+    o = service.approve(service.create_order("Копия", "", "", "", "", name)["id"])
+    service.confirm_payment(o["id"])
+    z = zipfile.ZipFile(io.BytesIO(service.make_backup()))
+    assert "wordsite.db" in z.namelist() and f"logos/{name}" in z.namelist()
+    p = tmp_path / "restored.db"
+    p.write_bytes(z.read("wordsite.db"))
+    c = sqlite3.connect(p)
+    assert c.execute("select text from words").fetchone()[0] == "Копия"
+    assert [n for n in service.make_backup(False) and zipfile.ZipFile(io.BytesIO(service.make_backup(False))).namelist()] == ["wordsite.db"]

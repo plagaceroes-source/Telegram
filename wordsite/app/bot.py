@@ -145,6 +145,24 @@ async def announce(o):
         log.exception("channel post failed")
 
 
+@dp.message(Command("backup"))
+async def on_backup(m: Message):
+    """Копия данных: присылает zip с базой и логотипами в группу модерации."""
+    if m.chat.id != config.MOD_CHAT_ID:
+        return
+    import time as _t
+    data = await asyncio.to_thread(service.make_backup)
+    note = ""
+    if len(data) > 45 * 1024 * 1024:  # лимит Telegram для ботов ~50 МБ
+        data = await asyncio.to_thread(service.make_backup, False)
+        note = " (без логотипов: архив слишком большой)"
+    name = _t.strftime("wordsite-backup-%Y%m%d-%H%M.zip", _t.gmtime())
+    st = service.state()
+    await m.reply_document(
+        BufferedInputFile(data, name),
+        caption=f"💾 Копия данных{note}. Слов в истории: {st['total_words']}. Сохрани файл у себя.")
+
+
 @dp.message(Command("cover"))
 async def on_cover(m: Message):
     """Предпросмотр поста: присылает в группу модерации, в канал ничего не уходит."""

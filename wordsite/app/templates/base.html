@@ -24,7 +24,7 @@
   <nav>
     <a href="/rules" {% if page=='rules' %}class="on"{% endif %}>Правила</a>
     <a href="/history" {% if page=='history' %}class="on"{% endif %}>История</a>
-    <a href="/about" {% if page=='about' %}class="on"{% endif %}>О проекте</a>
+    <a class="nav-about{% if page=='about' %} on{% endif %}" href="/about">О проекте</a>
   </nav>
 </header>
 <main>{% block main %}{% endblock %}</main>

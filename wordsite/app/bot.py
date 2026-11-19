@@ -3,6 +3,8 @@ import html
 import logging
 
 from aiogram import Bot, Dispatcher, F
+from aiogram.filters import Command
+from aiogram.types import Message
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from pathlib import Path
@@ -108,6 +110,12 @@ async def announce(o):
         await bot.send_message(config.CHANNEL_ID, text, disable_web_page_preview=True)
     except Exception:
         log.exception("channel post failed")
+
+
+@dp.message(Command("id"))
+async def on_id(m: Message):
+    """Подсказка при настройке: id чата для MOD_CHAT_ID / CHANNEL_ID."""
+    await m.reply(f"id этого чата: <code>{m.chat.id}</code>")
 
 
 def _allowed(cb: CallbackQuery) -> bool:

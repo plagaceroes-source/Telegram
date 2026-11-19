@@ -28,12 +28,28 @@
   </nav>
 </header>
 <main>{% block main %}{% endblock %}</main>
-<footer>
-  <div>
-    {% if cfg.CHANNEL_URL %}<a href="{{ cfg.CHANNEL_URL }}" target="_blank" rel="noopener">Telegram-канал</a>{% endif %}
-    <a href="/offer">Оферта</a><a href="/privacy">Политика</a><a href="/about">Контакты</a>
+<footer class="site-footer">
+  <div class="foot-cols">
+    <div class="foot-col">
+      <span class="foot-h">Проект</span>
+      <a href="/about">О проекте</a>
+      <a href="/rules">Правила</a>
+      <a href="/history">История</a>
+    </div>
+    <div class="foot-col">
+      <span class="foot-h">Документы</span>
+      <a href="/offer">Публичная оферта</a>
+      <a href="/privacy">Политика конфиденциальности</a>
+    </div>
+    {% if cfg.CHANNEL_URL or cfg.SUPPORT_USERNAME %}
+    <div class="foot-col">
+      <span class="foot-h">Мы в Telegram</span>
+      {% if cfg.CHANNEL_URL %}<a href="{{ cfg.CHANNEL_URL }}" target="_blank" rel="noopener">Канал</a>{% endif %}
+      {% if cfg.SUPPORT_USERNAME %}<a href="https://t.me/{{ cfg.SUPPORT_USERNAME }}" target="_blank" rel="noopener">Поддержка</a>{% endif %}
+    </div>
+    {% endif %}
   </div>
-  <div>© Мы из Бланки. Чайка одобряет, но ответственности не несёт.</div>
+  <div class="foot-bottom"><b>МЫ ИЗ БЛАНКИ®</b><span>Чайка одобряет, но ответственности не несёт.</span></div>
 </footer>
 <script src="/static/app.js"></script>
 {% block scripts %}{% endblock %}

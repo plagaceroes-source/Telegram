@@ -12,6 +12,7 @@ from aiogram import F, Router
 from aiogram.filters import Command, CommandObject
 from aiogram.types import Message
 from sqlalchemy import select
+from sqlalchemy.orm import selectinload
 
 from news_agent.config import settings
 from news_agent.db.models import GatedGroup, InviteLink, Source, TargetChannel, UserbotAccount
@@ -37,6 +38,7 @@ router.message.filter(F.text.startswith("/"), _is_approver)
 @router.message(Command("help"))
 async def cmd_help(message: Message) -> None:
     await message.reply(
+        "Все команды доступны кнопками: /menu\n\n"
         "Доступные команды:\n"
         "/add_source <username> <lang|auto> <rewrite|as_is> <account_id> — добавить источник\n"
         "/list_sources — список источников\n"
@@ -202,7 +204,7 @@ async def cmd_rename_target(message: Message, command: CommandObject) -> None:
 @router.message(Command("list_accounts"))
 async def cmd_list_accounts(message: Message) -> None:
     async with session_scope() as session:
-        result = await session.execute(select(UserbotAccount).order_by(UserbotAccount.id))
+        result = await session.execute(select(UserbotAccount).options(selectinload(UserbotAccount.sources)).order_by(UserbotAccount.id))
         accounts = list(result.scalars())
     if not accounts:
         await message.reply("Аккаунтов-слушателей пока нет. Добавьте через scripts/add_userbot_account.py")

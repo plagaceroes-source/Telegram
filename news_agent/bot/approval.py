@@ -12,7 +12,7 @@ from aiogram.types import CallbackQuery, ForceReply, LinkPreviewOptions, Message
 from sqlalchemy import select
 
 from news_agent.bot import commands as admin_commands
-from news_agent.bot import force_sub
+from news_agent.bot import force_sub, menu
 from news_agent.bot.publish import publish_draft, reject_draft
 from news_agent.bot.session import build_bot
 from news_agent.config import settings
@@ -282,6 +282,7 @@ async def on_edit_text(message: Message) -> None:
 
 def create_dispatcher() -> Dispatcher:
     dp = Dispatcher()
+    dp.include_router(menu.router)
     dp.include_router(router)
     dp.include_router(admin_commands.router)
     dp.include_router(force_sub.router)
@@ -295,6 +296,7 @@ async def run_forever() -> None:
     bot = build_bot(settings.bot_token)
     dp = create_dispatcher()
 
+    await menu.setup_bot_menu(bot)
     await force_sub.ensure_gated_group_invite_links(bot)
 
     reports_scheduler = start_reports_scheduler(bot)

@@ -18,8 +18,10 @@ from news_agent.config import settings
 from news_agent.db.models import GatedGroup, InviteLink, Source, TargetChannel, UserbotAccount
 from news_agent.db.session import session_scope
 from news_agent.reports.daily import send_daily_report
+from news_agent.reports.month_to_date import send_month_to_date_report
 from news_agent.reports.monthly import send_monthly_report
-from news_agent.reports.period import REPORT_TZ
+from news_agent.reports.period import REPORT_TZ, last_full_week_monday, week_monday
+from news_agent.reports.weekly import send_weekly_report
 
 logger = logging.getLogger(__name__)
 
@@ -53,6 +55,8 @@ async def cmd_help(message: Message) -> None:
         "/list_gated_groups — список групп с force-sub\n"
         "/pause_gated_group <id> / /resume_gated_group <id>\n"
         "/report [ГГГГ-ММ-ДД | ГГГГ-ММ] — выслать отчёт за день (по умолчанию вчера) или за месяц\n"
+        "/report_week [ГГГГ-ММ-ДД] — недельный отчёт (пн–вс) с динамикой по дням; без даты — за прошлую неделю\n"
+        "/report_mtd — с 1-го числа по сегодня в сравнении с прошлым месяцем к тому же моменту\n"
         "/rename_gated_group <id> <название> — переименовать группу\n"
         "/chatid — узнать chat_id текущего чата (например, для REPORTS_CHAT_ID)\n"
     )
@@ -433,3 +437,44 @@ async def cmd_report(message: Message, command: CommandObject) -> None:
         await message.reply("Не удалось отправить отчёт, смотрите логи.")
         return
     await message.reply(f"Отчёт {sent} отправлен в чат отчётов.")
+
+
+@router.message(Command("report_week"))
+async def cmd_report_week(message: Message, command: CommandObject) -> None:
+    """Недельный отчёт (понедельник–воскресенье). Аргумент — любая дата нужной недели;
+    без аргумента — последняя закончившаяся неделя."""
+    if not settings.reports_chat_id:
+        await message.reply("REPORTS_CHAT_ID не задан — отчёты отключены.")
+        return
+    arg = (command.args or "").strip()
+    today = dt.datetime.now(REPORT_TZ).date()
+    try:
+        monday = week_monday(dt.date.fromisoformat(arg)) if arg else last_full_week_monday(today)
+    except ValueError:
+        await message.reply("Формат: /report_week 2026-11-16 (любая дата нужной недели). Без аргумента — за прошлую неделю.")
+        return
+    if monday + dt.timedelta(days=7) > today:
+        await message.reply("Эта неделя ещё не закончилась. Для текущего месяца используйте /report_mtd.")
+        return
+    try:
+        await send_weekly_report(message.bot, monday)
+    except Exception:
+        logger.exception("Не удалось отправить недельный отчёт по команде")
+        await message.reply("Не удалось отправить отчёт, смотрите логи.")
+        return
+    await message.reply(f"Недельный отчёт {monday:%d.%m}–{monday + dt.timedelta(days=6):%d.%m.%Y} отправлен в чат отчётов.")
+
+
+@router.message(Command("report_mtd"))
+async def cmd_report_mtd(message: Message) -> None:
+    """С 1-го числа по сегодня и сравнение с прошлым месяцем к тому же моменту."""
+    if not settings.reports_chat_id:
+        await message.reply("REPORTS_CHAT_ID не задан — отчёты отключены.")
+        return
+    try:
+        await send_month_to_date_report(message.bot)
+    except Exception:
+        logger.exception("Не удалось отправить отчёт с начала месяца")
+        await message.reply("Не удалось отправить отчёт, смотрите логи.")
+        return
+    await message.reply("Отчёт с начала месяца отправлен в чат отчётов.")

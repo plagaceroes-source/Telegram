@@ -160,3 +160,90 @@ async def subscriber_flow(
             total_leaves += 1
 
     return total_joins, total_leaves, joins_by_source
+
+
+def _as_utc(value: dt.datetime) -> dt.datetime:
+    return value if value.tzinfo is not None else value.replace(tzinfo=dt.timezone.utc)
+
+
+async def period_metrics(session, target_ids: list[int], since: dt.datetime, until: dt.datetime) -> dict:
+    """Все итоговые показатели периода [since, until) — для недельного, месячного и «с начала месяца» отчётов."""
+    posts_count = await published_posts_count(session, target_ids, since, until)
+    start_subs = await subscriber_count_at(session, target_ids, since)
+    end_subs = await subscriber_count_at(session, target_ids, until)
+    joins, leaves, joins_by_source = await subscriber_flow(session, target_ids, since, until)
+    totals = await posts_totals(session, target_ids, since, until)
+    return {
+        "posts_count": posts_count,
+        "start_subs": start_subs,
+        "end_subs": end_subs,
+        "growth": end_subs - start_subs,
+        # Нет снимка на начало периода → «прирост» равен всему числу подписчиков, это не прирост.
+        "start_known": start_subs > 0,
+        "joins": joins,
+        "leaves": leaves,
+        "joins_by_source": joins_by_source,
+        "totals": totals,
+    }
+
+
+async def daily_series(
+    session, target_ids: list[int], days: list[dt.date], since: dt.datetime, until: dt.datetime, tz
+) -> list[dict]:
+    """Показатели по каждому календарному дню (в часовом поясе отчёта) из days, но только
+    в пределах [since, until): последний день может быть неполным.
+
+    На каждый день: posts, views (сумма просмотров постов, вышедших в этот день), joins, leaves,
+    end_subs (число подписчиков на конец дня или на until) и growth (изменение за день,
+    None если нет снимка на начало периода)."""
+    posts_by_day: dict[dt.date, list[int]] = {d: [0, 0] for d in days}
+    events_by_day: dict[dt.date, list[int]] = {d: [0, 0] for d in days}
+    if target_ids:
+        rows = (
+            await session.execute(
+                select(ChannelPost.posted_at, ChannelPost.views).where(
+                    ChannelPost.target_channel_id.in_(target_ids),
+                    ChannelPost.posted_at >= since,
+                    ChannelPost.posted_at < until,
+                )
+            )
+        ).all()
+        for posted_at, views in rows:
+            bucket = posts_by_day.get(_as_utc(posted_at).astimezone(tz).date())
+            if bucket is not None:
+                bucket[0] += 1
+                bucket[1] += views or 0
+        rows = (
+            await session.execute(
+                select(SubscriberEvent.event_type, SubscriberEvent.occurred_at).where(
+                    SubscriberEvent.target_channel_id.in_(target_ids),
+                    SubscriberEvent.occurred_at >= since,
+                    SubscriberEvent.occurred_at < until,
+                )
+            )
+        ).all()
+        for event_type, occurred_at in rows:
+            bucket = events_by_day.get(_as_utc(occurred_at).astimezone(tz).date())
+            if bucket is not None and event_type in ("join", "leave"):
+                bucket[0 if event_type == "join" else 1] += 1
+
+    start_subs = await subscriber_count_at(session, target_ids, since)
+    result = []
+    previous = start_subs
+    for day in days:
+        day_end_local = dt.datetime(day.year, day.month, day.day, tzinfo=tz) + dt.timedelta(days=1)
+        end = min(day_end_local.astimezone(dt.timezone.utc), until)
+        end_subs = await subscriber_count_at(session, target_ids, end)
+        result.append(
+            {
+                "day": day,
+                "posts": posts_by_day[day][0],
+                "views": posts_by_day[day][1],
+                "joins": events_by_day[day][0],
+                "leaves": events_by_day[day][1],
+                "end_subs": end_subs,
+                "growth": (end_subs - previous) if start_subs > 0 else None,
+            }
+        )
+        previous = end_subs
+    return result

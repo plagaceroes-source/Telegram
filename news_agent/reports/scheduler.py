@@ -18,7 +18,8 @@ from news_agent.db.models import ReportLog
 from news_agent.db.session import session_scope
 from news_agent.reports.daily import send_daily_report
 from news_agent.reports.monthly import send_monthly_report
-from news_agent.reports.period import REPORT_TZ, previous_month
+from news_agent.reports.weekly import send_weekly_report
+from news_agent.reports.period import REPORT_TZ, last_full_week_monday, previous_month
 from news_agent.stats.snapshot import take_snapshot
 
 logger = logging.getLogger(__name__)
@@ -67,6 +68,20 @@ async def _run_daily(bot: Bot) -> None:
     await _mark_sent("daily", period_key)
 
 
+async def _run_weekly(bot: Bot) -> None:
+    """Каждый понедельник в 00:20 — отчёт за прошедшую неделю (понедельник–воскресенье)."""
+    monday = last_full_week_monday(dt.datetime.now(REPORT_TZ).date())
+    period_key = monday.isoformat()
+    if await _already_sent("weekly", period_key):
+        return
+    try:
+        await send_weekly_report(bot, monday)
+    except Exception:
+        logger.exception("Не удалось отправить недельный отчёт за неделю с %s", period_key)
+        return
+    await _mark_sent("weekly", period_key)
+
+
 async def _run_monthly(bot: Bot) -> None:
     today = dt.datetime.now(REPORT_TZ).date()
     year, month = previous_month(today.year, today.month)
@@ -102,6 +117,13 @@ def start_reports_scheduler(bot: Bot) -> AsyncIOScheduler | None:
         misfire_grace_time=600,
     )
     scheduler.add_job(
+        _run_weekly,
+        CronTrigger(day_of_week="mon", hour=REPORT_HOUR, minute=REPORT_MINUTE, timezone=REPORT_TZ),
+        args=[bot],
+        id="weekly_report",
+        misfire_grace_time=600,
+    )
+    scheduler.add_job(
         _run_monthly,
         CronTrigger(day=1, hour=REPORT_HOUR, minute=REPORT_MINUTE, timezone=REPORT_TZ),
         args=[bot],
@@ -110,7 +132,7 @@ def start_reports_scheduler(bot: Bot) -> AsyncIOScheduler | None:
     )
     scheduler.start()
     logger.info(
-        "Планировщик отчётов запущен: ежедневно в %02d:%02d (%s) за прошедшие сутки, 1-го числа — за прошлый месяц",
+        "Планировщик отчётов запущен: ежедневно в %02d:%02d (%s) за прошедшие сутки, по понедельникам — за прошедшую неделю, 1-го числа — за прошлый месяц",
         REPORT_HOUR,
         REPORT_MINUTE,
         settings.reports_timezone,

@@ -26,21 +26,7 @@ TOP_POSTS_LIMIT = 10
 
 async def _month_metrics(session, target_ids: list[int], year: int, month: int) -> dict:
     since, until = month_bounds_utc(year, month)
-    posts_count = await data.published_posts_count(session, target_ids, since, until)
-    start_subs = await data.subscriber_count_at(session, target_ids, since)
-    end_subs = await data.subscriber_count_at(session, target_ids, until)
-    joins, leaves, joins_by_source = await data.subscriber_flow(session, target_ids, since, until)
-    totals = await data.posts_totals(session, target_ids, since, until)
-    return {
-        "posts_count": posts_count,
-        "start_subs": start_subs,
-        "end_subs": end_subs,
-        "growth": end_subs - start_subs,
-        "joins": joins,
-        "leaves": leaves,
-        "joins_by_source": joins_by_source,
-        "totals": totals,
-    }
+    return await data.period_metrics(session, target_ids, since, until)
 
 
 async def _gather_monthly_data(session, year: int, month: int) -> dict:
